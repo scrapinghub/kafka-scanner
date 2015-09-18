@@ -25,7 +25,7 @@ class MsgProcessorHandlers(object):
         """ Get messages batch from Kafka (list at output) """
         # get messages list from kafka
         if self.__next_messages == 0:
-            self._set_next_messages(50)
+            self._set_next_messages(1000)
         self._set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
         for partition, offmsg in self.consumer.get_messages(self.__next_messages):
@@ -34,7 +34,7 @@ class MsgProcessorHandlers(object):
         if newmark - mark > 30:
             self._set_next_messages(self.__next_messages / 2 or 1)
         elif newmark - mark < 5:
-            self._set_next_messages(min(self.__next_messages + 50, max_next_messages))
+            self._set_next_messages(min(self.__next_messages + 100, max_next_messages))
 
     def decompress_messages(self, partitions_offmsgs):
         """ Decompress pre-defined compressed fields for each message. """
