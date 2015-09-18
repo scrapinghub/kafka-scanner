@@ -230,7 +230,7 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertTrue(scanner.scanned_count <= max_scanned_count)
 
     def test_kafka_scan_seek_start_after_batches(self, client_mock, simple_consumer_mock, mp_consumer_mock):
-        self.test_kafka_scan_seek_start_after(batchsize=200, max_scanned_count=4200)
+        self.test_kafka_scan_seek_start_after(batchsize=200, max_scanned_count=4400)
 
 
 @patch('kafka_scanner.ExtendedMultiProcessConsumer', autospec=True)

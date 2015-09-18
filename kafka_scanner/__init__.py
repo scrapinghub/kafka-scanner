@@ -221,7 +221,7 @@ class KafkaScanner(object):
             self.stats_logger.append_stat_var('Dupes', lambda : self.dupes_count)
 
         self.__max_next_messages = min(max_next_messages, self.__batchsize)
-
+        self.__min_seek_sample_size = 50
         # ensures cleaning of threads/db even after exceptions
         self.__closed = False
         atexit.register(self.close)
@@ -263,7 +263,6 @@ class KafkaScanner(object):
         max_jump = min(max_jump or self.__max_next_messages, self.__max_next_messages)
         if not self._key_prefixes and not self._start_after:
             return start_upper_offset
-        sample_size = max(50, max_jump / sample_ratio) / 2
         cluster_found = None
         consumer = kafka.SimpleConsumer(self._client, self._group + '_seeker', self._topic, partitions=[partition], auto_commit=False)
         consumer.provide_partition_info()
@@ -274,7 +273,14 @@ class KafkaScanner(object):
             lower_offset = upper_offset - max_jump
             lower_offset = max(lower_offset, self._min_lower_offsets[partition])
             _seek_consumer(consumer, lower_offset)
-            sample = [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
+            while True:
+                sample_size = max(self.__min_seek_sample_size, max_jump / sample_ratio)
+                try:
+                    sample = [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
+                    break
+                except kafka.common.ConsumerFetchSizeTooSmall:
+                    self.__min_seek_sample_size += 50
+                
             cluster_found = _sample_hit(sample)
             if not cluster_found:
                 _seek_consumer(consumer, upper_offset - sample_size)
