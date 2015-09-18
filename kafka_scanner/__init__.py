@@ -237,7 +237,7 @@ class KafkaScanner(object):
         self._create_init_consumer()
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def seek_key_prefixes(self, partition, start_upper_offset, sample_ratio=1000, max_jump=None):
+    def seek_key_prefixes(self, partition, start_upper_offset, sample_ratio=100, max_jump=None):
         """
         This works under the assumption that key prefixes are clustered, so we can accelerate scanning for
         getting particular range of keys without scanning the entire topic. It jumps self.__max_next_messages offsets and
@@ -260,10 +260,10 @@ class KafkaScanner(object):
                     return offset, key
             return None
 
-        max_jump = min(max_jump, self.__max_next_messages)
+        max_jump = min(max_jump or self.__max_next_messages, self.__max_next_messages)
         if not self._key_prefixes and not self._start_after:
             return start_upper_offset
-        sample_size = max(20, max_jump / sample_ratio) / 2
+        sample_size = max(50, max_jump / sample_ratio) / 2
         cluster_found = None
         consumer = kafka.SimpleConsumer(self._client, self._group + '_seeker', self._topic, partitions=[partition], auto_commit=False)
         consumer.provide_partition_info()
