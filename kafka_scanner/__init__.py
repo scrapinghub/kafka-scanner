@@ -461,9 +461,11 @@ class KafkaScanner(object):
         if not self.__closed:
             self.__closed = True
             self.stats_logger.close()
-            self.consumer.stop()
-            self.init_consumer.stop()
-            self.consumer.client.close()
+            if self.consumer is not None:
+                self.consumer.stop()
+            if self.init_consumer is not None:
+                self.init_consumer.stop()
+                self.init_consumer.client.close()
             if self._dupes is not None:
                 for db in self._dupes.values():
                     db.close()
