@@ -16,25 +16,29 @@ class MsgProcessorHandlers(object):
     def set_consumer(self, consumer):
         self.consumer = consumer
 
-    def _set_next_messages(self, next_messages):
+    def set_next_messages(self, next_messages):
         if next_messages != self.__next_messages:
             self.__next_messages = next_messages
             log.info('Next messages count adjusted to {}'.format(next_messages))
 
+    @property
+    def next_messages(self):
+        return self.__next_messages
+        
     def consume_messages(self, max_next_messages):
         """ Get messages batch from Kafka (list at output) """
         # get messages list from kafka
         if self.__next_messages == 0:
-            self._set_next_messages(1000)
-        self._set_next_messages(min(self.__next_messages, max_next_messages))
+            self.set_next_messages(1000)
+        self.set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
         for partition, offmsg in self.consumer.get_messages(self.__next_messages):
             yield partition, offmsg
         newmark = time.time()
         if newmark - mark > 30:
-            self._set_next_messages(self.__next_messages / 2 or 1)
+            self.set_next_messages(self.__next_messages / 2 or 1)
         elif newmark - mark < 5:
-            self._set_next_messages(min(self.__next_messages + 100, max_next_messages))
+            self.set_next_messages(min(self.__next_messages + 100, max_next_messages))
 
     def decompress_messages(self, partitions_offmsgs):
         """ Decompress pre-defined compressed fields for each message. """

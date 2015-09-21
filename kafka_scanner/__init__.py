@@ -261,6 +261,7 @@ class KafkaScanner(object):
             return None
 
         max_jump = min(max_jump or self.__max_next_messages, self.__max_next_messages)
+        sample_size = max(_MIN_SEEK_SAMPLE_SIZE, max_jump / sample_ratio)
         if not self._key_prefixes and not self._start_after:
             return start_upper_offset
         cluster_found = None
@@ -274,8 +275,10 @@ class KafkaScanner(object):
         consumer.provide_partition_info()
         upper_offset = start_upper_offset
         self.processor.set_consumer(consumer)
+        scanner_sample_size = self.processor.processor_handlers.next_messages
+        self.processor.processor_handlers.set_next_messages(sample_size)
         log.info("Start seeking offset: {%s: %s}" % (partition, upper_offset))
-        sample_size = max_jump / sample_ratio
+
         while cluster_found is None and upper_offset > self._min_lower_offsets[partition]:
             lower_offset = upper_offset - max_jump
             lower_offset = max(lower_offset, self._min_lower_offsets[partition])
@@ -296,10 +299,10 @@ class KafkaScanner(object):
             log.info("Upper offset: {%s: %s}" % (partition, upper_offset))
         consumer.stop()
         self.processor.set_consumer(self.consumer)
+        self.processor.processor_handlers.set_next_messages(scanner_sample_size)
         return upper_offset
 
     def _get_sample(self, sample_size):
-        sample_size = max(_MIN_SEEK_SAMPLE_SIZE, sample_size)
         return [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
