@@ -21,6 +21,7 @@ DEFAULT_BATCH_SIZE = 1000000
 FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
 FETCH_SIZE_BYTES = 10 ** 7
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 10
+_MIN_SEEK_SAMPLE_SIZE = 50
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
 logging.getLogger("kafka.client").setLevel(logging.WARNING)
@@ -221,7 +222,6 @@ class KafkaScanner(object):
             self.stats_logger.append_stat_var('Dupes', lambda : self.dupes_count)
 
         self.__max_next_messages = min(max_next_messages, self.__batchsize)
-        self.__min_seek_sample_size = 50
         # ensures cleaning of threads/db even after exceptions
         self.__closed = False
         atexit.register(self.close)
@@ -264,27 +264,28 @@ class KafkaScanner(object):
         if not self._key_prefixes and not self._start_after:
             return start_upper_offset
         cluster_found = None
-        consumer = kafka.SimpleConsumer(self._client, self._group + '_seeker', self._topic, partitions=[partition], auto_commit=False)
+        consumer = kafka.SimpleConsumer(
+                self._client, self._group + '_seeker',
+                self._topic, partitions=[partition],
+                fetch_size_bytes=FETCH_SIZE_BYTES,
+                buffer_size=FETCH_BUFFER_SIZE_BYTES,
+                max_buffer_size=MAX_FETCH_BUFFER_SIZE_BYTES,
+                auto_commit=False)
         consumer.provide_partition_info()
         upper_offset = start_upper_offset
         self.processor.set_consumer(consumer)
         log.info("Start seeking offset: {%s: %s}" % (partition, upper_offset))
+        sample_size = max_jump / sample_ratio
         while cluster_found is None and upper_offset > self._min_lower_offsets[partition]:
             lower_offset = upper_offset - max_jump
             lower_offset = max(lower_offset, self._min_lower_offsets[partition])
             _seek_consumer(consumer, lower_offset)
-            while True:
-                sample_size = max(self.__min_seek_sample_size, max_jump / sample_ratio)
-                try:
-                    sample = [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
-                    break
-                except kafka.common.ConsumerFetchSizeTooSmall:
-                    self.__min_seek_sample_size += 50
+            sample = self._get_sample(sample_size)
                 
             cluster_found = _sample_hit(sample)
             if not cluster_found:
                 _seek_consumer(consumer, upper_offset - sample_size)
-                sample = [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
+                sample = self._get_sample(sample_size)
                 cluster_found = _sample_hit(sample)
             if not cluster_found:
                 upper_offset = lower_offset
@@ -296,6 +297,10 @@ class KafkaScanner(object):
         consumer.stop()
         self.processor.set_consumer(self.consumer)
         return upper_offset
+
+    def _get_sample(self, sample_size):
+        sample_size = max(_MIN_SEEK_SAMPLE_SIZE, sample_size)
+        return [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_init_consumer(self):
