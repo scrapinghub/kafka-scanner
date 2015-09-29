@@ -8,10 +8,11 @@ log = logging.getLogger(__name__)
 
 
 class MsgProcessorHandlers(object):
-    def __init__(self):
+    def __init__(self, encoding=None):
         self.decompress_fun = zlib.decompress
         self.consumer = None
         self.__next_messages = 0
+        self.__encoding = encoding
 
     def set_consumer(self, consumer):
         self.consumer = consumer
@@ -49,13 +50,12 @@ class MsgProcessorHandlers(object):
             else:
                 yield partition, offmsg.offset, offmsg.message.key, offmsg.message.value
 
-    @staticmethod
-    def unpack_messages(partitions_msgs):
+    def unpack_messages(self, partitions_msgs):
         """ Deserialize a message to python structures """
 
         for partition, offset, key, msg in partitions_msgs:
             if msg:
-                record = msgpack.unpackb(msg)
+                record = msgpack.unpackb(msg, encoding=self.__encoding)
                 if isinstance(record, dict):
                     record['_key'] = key
                     yield partition, offset, record

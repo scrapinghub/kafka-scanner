@@ -157,7 +157,7 @@ class KafkaScanner(object):
                         keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         upper_offsets=None, min_lower_offsets=None, key_prefixes=None,
-                        start_after=None):
+                        start_after=None, encoding='utf8'):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -174,6 +174,7 @@ class KafkaScanner(object):
         min_lower_offsets - Set limit lower offsets until which to scan.
         key_prefixes - Only yield records with given key prefixes. Has predecende over start_after.
         start_after - Only yield records with key prefixes after the given one.
+        encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         """
         assert isinstance(brokers, Iterable)
         if not keep_offsets:
@@ -188,6 +189,7 @@ class KafkaScanner(object):
         self.__deleted_count = 0
         self.__issued_count = 0
         self.__dupes_count = 0
+        self.__encoding = encoding
 
         self.__logcount = logcount
         self.consumer = None
@@ -233,7 +235,7 @@ class KafkaScanner(object):
         handlers_list = ('consume_messages', 'decompress_messages', 'unpack_messages')
         if not self.enabled:
             self.enabled = True
-            self.processor = MsgProcessor(handlers_list)
+            self.processor = MsgProcessor(handlers_list, encoding=self.__encoding)
         self._create_init_consumer()
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
