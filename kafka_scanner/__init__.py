@@ -551,6 +551,11 @@ class KafkaScannerSimple(KafkaScanner):
     """
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_scan_consumer(self):
+        import sys, socket
+        if sys.version_info < (2, 7, 4):
+            # workaround for: http://bugs.python.org/issue6056
+            socket.setdefaulttimeout(None)
+
         self.consumer = kafka.SimpleConsumer(
             client=self._client,
             partitions=self._upper_offsets.keys(),
