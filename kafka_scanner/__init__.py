@@ -30,6 +30,12 @@ logging.getLogger("kafka.client").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 
+import sys, socket
+if sys.version_info < (2, 7, 4):
+    # workaround for: http://bugs.python.org/issue6056
+    socket.setdefaulttimeout(None)
+
+
 class keydefaultdict(defaultdict):
     def __missing__(self, key):
         if self.default_factory is None:
