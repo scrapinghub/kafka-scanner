@@ -240,6 +240,15 @@ class KafkaScannerTest(BaseScannerTest):
             mp_consumer_mock, encoding='latin1')
         self.assertEqual(messages[0]['body'], u'hol\xc3\xa1')
 
+    def test_wrong_encoding(self, client_mock, simple_consumer_mock, mp_consumer_mock):
+        msgs = [('AD001', '>\xc4\xee')]
+        samples = get_kafka_msg_samples(msgs)
+        client_mock.return_value = FakeClient(samples, 1)
+        scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
+            mp_consumer_mock)
+        self.assertEqual(messages, [])
+
+
 @patch('kafka_scanner.ExtendedMultiProcessConsumer', autospec=True)
 @patch('kafka.SimpleConsumer', autospec=True)
 @patch('kafka.KafkaClient', autospec=True)

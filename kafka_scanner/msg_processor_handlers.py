@@ -25,7 +25,7 @@ class MsgProcessorHandlers(object):
     @property
     def next_messages(self):
         return self.__next_messages
-        
+
     def consume_messages(self, max_next_messages):
         """ Get messages batch from Kafka (list at output) """
         # get messages list from kafka
@@ -55,11 +55,16 @@ class MsgProcessorHandlers(object):
 
         for partition, offset, key, msg in partitions_msgs:
             if msg:
-                record = msgpack.unpackb(msg, encoding=self.__encoding)
-                if isinstance(record, dict):
-                    record['_key'] = key
-                    yield partition, offset, record
+                try:
+                    record = msgpack.unpackb(msg, encoding=self.__encoding)
+                except Exception, e:
+                    log.error("Error unpacking record at partition:offset {}:{} (key: {} : {})".format(partition, offset, key, repr(e)))
+                    continue
                 else:
-                    log.info('Record {} has wrong type'.format(key))
+                    if isinstance(record, dict):
+                        record['_key'] = key
+                        yield partition, offset, record
+                    else:
+                        log.info('Record {} has wrong type'.format(key))
             else:
                 yield partition, offset, {'_key': key}
