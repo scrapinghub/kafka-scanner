@@ -17,7 +17,7 @@ from .multiprocess import ExtendedMultiProcessConsumer
 from .utils import retry_on_exception
 
 
-DEFAULT_BATCH_SIZE = 1000000
+DEFAULT_BATCH_SIZE = 10000
 FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
 FETCH_SIZE_BYTES = 10 ** 7
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 10
