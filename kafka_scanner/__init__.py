@@ -183,7 +183,7 @@ class KafkaScanner(object):
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         """
         assert isinstance(brokers, Iterable)
-        if not keep_offsets:
+        if keep_offsets:
             assert group, 'keep_offsets option needs a group name'
         self._client = kafka.KafkaClient(map(bytes, brokers))
         self._topic = bytes(topic)
