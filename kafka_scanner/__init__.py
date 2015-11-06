@@ -319,6 +319,7 @@ class KafkaScanner(object):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _commit_offsets(self, offsets):
+        log.info('Commiting offsets: {}'.format(offsets))
         self.init_consumer.offsets.update(offsets)
         self.init_consumer.count_since_commit += 1
         self.init_consumer.commit()
@@ -462,7 +463,6 @@ class KafkaScanner(object):
                         yield messages
                         messages = []
                     messages.append(message)
-                self.commit_batch_offsets()
             else:
                 break
         if messages:
@@ -499,11 +499,7 @@ class KafkaScanner(object):
         diff_offsets = {p: max(self._upper_offsets.get(p, 0) - o, 0) for p, o in self.consumer.offsets.items()}
         if any(diff_offsets.values()):
             commit_offsets = {p: self._lower_offsets.get(p, 0) + o for p, o in diff_offsets.items()}
-            log.info('Commit final offsets: {}'.format(commit_offsets))
             self._commit_offsets(commit_offsets)
-
-    def commit_batch_offsets(self):
-        pass
 
     def run(self):
         """ Convenient method for iterating along topic. """
@@ -605,6 +601,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
         self._create_scan_consumer()
 
     def _init_offsets(self, batchsize):
+        self._lower_offsets = self.consumer.offsets.copy() 
         return batchsize / len(self._upper_offsets) or 1
 
     def _init_scan_consumer(self, batchsize):
@@ -619,11 +616,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
         return partition_batchsize
 
     def commit_final_offsets(self):
-        self.commit_batch_offsets()
-
-    def commit_batch_offsets(self):
         commit_offsets = self.consumer.offsets
-        log.info('Commit batch offsets: {}'.format(commit_offsets))
         self._commit_offsets(commit_offsets)
 
     def are_there_messages_to_process(self):
