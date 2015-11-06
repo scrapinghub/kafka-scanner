@@ -279,7 +279,6 @@ class KafkaScannerOverrideTest(BaseScannerTest):
             self.assertTrue('AD%.3d' % i not in msgsdict)
 
 
-@patch('kafka_scanner.ExtendedMultiProcessConsumer', autospec=True)
 @patch('kafka.SimpleConsumer', autospec=True)
 @patch('kafka.KafkaClient', autospec=True)
 class KafkaScannerDirectTest(BaseScannerTest):
@@ -289,19 +288,19 @@ class KafkaScannerDirectTest(BaseScannerTest):
                 [('AD%.3d' % i, None) for i in range(100, 200)]
     samples = get_kafka_msg_samples(msgs)
 
-    def test_kafka_scan_batch(self, client_mock, simple_consumer_mock, mp_consumer_mock):
+    def test_kafka_scan_batch(self, client_mock, simple_consumer_mock):
         client_mock.return_value = FakeClient(self.samples, 3, count_variations={0: 2, 1: 3, 2: 2})
         scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
-                mp_consumer_mock, batchsize=200)
+                batchsize=200)
         msgsdict = {m['_key']: m.get('body', None) for m in messages}
         self.assertEqual(len(messages), 1100)
         self.assertEqual(len(set(msgsdict)), 1000)
         self.assertEqual(number_of_batches, 6)
 
-    def test_kafka_scan_batches_count(self, client_mock, simple_consumer_mock, mp_consumer_mock):
+    def test_kafka_scan_batches_count(self, client_mock, simple_consumer_mock):
         client_mock.return_value = FakeClient(self.samples, 3, count_variations={0: 2, 1: 3, 2: 2})
         scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
-                mp_consumer_mock, batchsize=100, count=100)
+                batchsize=100, count=100)
         msgsdict = {m['_key']: m['body'] for m in messages}
         self.assertTrue('AD000' in msgsdict)
         self.assertEqual(len(set(msgsdict)), 100)

@@ -462,6 +462,7 @@ class KafkaScanner(object):
                         yield messages
                         messages = []
                     messages.append(message)
+                self.commit_batch_offsets()
             else:
                 break
         if messages:
@@ -500,6 +501,9 @@ class KafkaScanner(object):
             commit_offsets = {p: self._lower_offsets.get(p, 0) + o for p, o in diff_offsets.items()}
             log.info('Commit final offsets: {}'.format(commit_offsets))
             self._commit_offsets(commit_offsets)
+
+    def commit_batch_offsets(self):
+        pass
 
     def run(self):
         """ Convenient method for iterating along topic. """
@@ -574,39 +578,52 @@ class KafkaScannerSimple(KafkaScanner):
         log.info("Target offsets: {}".format(repr(self._upper_offsets)))
 
 
-class KafkaScannerDirect(KafkaScanner):
+class KafkaScannerDirect(KafkaScannerSimple):
     """
-    Scanner in right sense. Dedupe is disabled in order to conserve
-    logic of direct scanning. Also delete records are issued.
+    Scanner in direct sense. Dedupe is not supported in order to conserve
+    logic of direct scanning. Also, delete records are issued.
+
+    This is essentially a wrapper around SimpleConsumer for supporting same api than other scanners,
+    with no extra feature support.
     """
-    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0, keep_offsets=False):
+    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0, keep_offsets=False,
+            partitions=None, max_next_messages=10000, logcount=10000):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
-                    count=count, keep_offsets=keep_offsets, nodelete=True, nodedupe=True)
+                    count=count, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
+                    partitions=partitions, max_next_messages=max_next_messages, logcount=logcount)
+
+    def init_scanner(self):
+        super(KafkaScannerDirect, self).init_scanner()
+        if not self._group or not self._keep_offsets:
+            self._lower_offsets = {partition: 0 for partition in self.init_consumer.offsets}
+            self.init_consumer.offsets.update(self._lower_offsets)
+            self.init_consumer.count_since_commit += 1
+            self.init_consumer.commit()
+        else:
+            self._lower_offsets = self.init_consumer.offsets.copy()
+        self._upper_offsets = self.latest_offsets
+        self._create_scan_consumer()
 
     def _init_offsets(self, batchsize):
-        if self.consumer is None:
-            self._create_init_consumer()
-            if not self._group or not self._keep_offsets:
-                self._lower_offsets = {partition: 0 for partition in self.init_consumer.offsets}
-                self.init_consumer.offsets.update(self._lower_offsets)
-                self.init_consumer.count_since_commit += 1
-                self.init_consumer.commit()
-            else:
-                self._lower_offsets = self.init_consumer.offsets.copy()
-            self._upper_offsets = self.latest_offsets
-        else:
-            self.consumer.commit()
         return batchsize / len(self._upper_offsets) or 1
 
     def _init_scan_consumer(self, batchsize):
+        previous_lower_offsets = self._lower_offsets
+
         partition_batchsize = self._init_offsets(batchsize)
-        if self.consumer is None:
-            self._create_scan_consumer()
+
+        # commit previous lower offsets in order to read correct latest offsets if this job fails
+        if previous_lower_offsets:
+            self._commit_offsets(previous_lower_offsets)
+
         return partition_batchsize
 
     def commit_final_offsets(self):
+        self.commit_batch_offsets()
+
+    def commit_batch_offsets(self):
         commit_offsets = self.consumer.offsets
-        log.info('Commit final offsets: {}'.format(commit_offsets))
+        log.info('Commit batch offsets: {}'.format(commit_offsets))
         self._commit_offsets(commit_offsets)
 
     def are_there_messages_to_process(self):
