@@ -160,7 +160,7 @@ class StatsLogger(object):
 class KafkaScanner(object):
 
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0,
-                        keep_offsets=False, nodelete=False, nodedupe=False,
+                        batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         upper_offsets=None, min_lower_offsets=None, key_prefixes=None,
                         start_after=None, encoding='utf8'):
@@ -173,6 +173,7 @@ class KafkaScanner(object):
         count - number of records to yield
         batchsize - number of records per batch. Bigger is more efficient, but more memory demanding.
                     Defaults to DEFAULT_BATCH_SIZE
+        batchcount - max number of batches to yield (no limited if 0)
         partitions - set which partitions to scan
         logcount - scanned records period to print stats log line
         upper_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
@@ -196,6 +197,8 @@ class KafkaScanner(object):
         self.__issued_count = 0
         self.__dupes_count = 0
         self.__encoding = encoding
+        self.__batchcount = batchcount
+        self.__issued_batches = 0
 
         self.__logcount = logcount
         self.consumer = None
@@ -459,9 +462,12 @@ class KafkaScanner(object):
         while self.enabled:
             if self.consumer is None or self.are_there_messages_to_process():
                 for message in self.get_new_batch():
+                    if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
+                        self.enabled = False
                     if len(messages) == self.__batchsize:
                         yield messages
                         messages = []
+                        self.__issued_batches += 1
                     messages.append(message)
             else:
                 break
@@ -551,6 +557,7 @@ class KafkaScanner(object):
             self._latest_offsets = get_latest_offsets(self.init_consumer, self._topic, self._partitions)
         return self._latest_offsets
 
+
 class KafkaScannerSimple(KafkaScanner):
     """
     Scanner implemented around a Kafka SimpleConsumer
@@ -580,12 +587,12 @@ class KafkaScannerDirect(KafkaScannerSimple):
     logic of direct scanning. Also, delete records are issued.
 
     This is essentially a wrapper around SimpleConsumer for supporting same api than other scanners,
-    with no extra feature support.
+    with few extra feature support)
     """
-    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0, keep_offsets=False,
+    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=False,
             partitions=None, max_next_messages=10000, logcount=10000):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
-                    count=count, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
+                    count=0, batchcount=batchcount, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount)
 
     def init_scanner(self):
@@ -612,7 +619,6 @@ class KafkaScannerDirect(KafkaScannerSimple):
         # commit previous lower offsets in order to read correct latest offsets if this job fails
         if previous_lower_offsets:
             self._commit_offsets(previous_lower_offsets)
-
         return partition_batchsize
 
     def commit_final_offsets(self):
