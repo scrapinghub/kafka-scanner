@@ -473,11 +473,13 @@ class KafkaScanner(object):
                 break
         if messages:
             yield messages
+            self.__issued_batches += 1
 
         self.commit_final_offsets()
 
         self.stats_logger.log_stats(totals=True)
 
+        log.info("Total batches Issued: %d", self.__issued_batches)
         scan_efficiency = 100.0 - ( 100.0 * (self.__real_scanned_count - \
                         self.scanned_count) / self.__real_scanned_count) \
                         if self.__real_scanned_count else 100.0
