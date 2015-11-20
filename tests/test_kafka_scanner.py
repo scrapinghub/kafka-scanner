@@ -332,6 +332,15 @@ class KafkaScannerDirectTest(BaseScannerTest):
         msgkeys = set(msgsdict.keys())
         self.assertTrue(batchsize * (batchcount - 1) <= len(msgkeys) <= batchsize * batchcount)
 
+    def test_kafka_starting_offsets(self, client_mock, simple_consumer_mock):
+        client_mock.return_value = FakeClient(self.samples, 3, count_variations={0: 2, 1: 3, 2: 2})
+        scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
+                batchsize=200, start_offsets={0: 150, 1: 150, 2: 200})
+        msgsdict = {m['_key']: m.get('body', None) for m in messages}
+        self.assertEqual(len(messages), 600)
+        self.assertEqual(number_of_batches, 3)
+
+
 
 @patch('kafka_scanner.ExtendedMultiProcessConsumer', autospec=True)
 @patch('kafka.SimpleConsumer', autospec=True)

@@ -177,7 +177,7 @@ class KafkaScanner(object):
         partitions - set which partitions to scan
         logcount - scanned records period to print stats log line
         upper_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
-                        partition.
+                        partition (except if keep_offsets is True)
         min_lower_offsets - Set limit lower offsets until which to scan.
         key_prefixes - Only yield records with given key prefixes. Has predecende over start_after.
         start_after - Only yield records with key prefixes after the given one.
@@ -590,17 +590,23 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     This is essentially a wrapper around SimpleConsumer for supporting same api than other scanners,
     with few extra feature support)
+
+    start_offsets - allow to set start offsets dict.
+
+    The rest of parameters has the same functionality as parent class
     """
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=False,
-            partitions=None, max_next_messages=10000, logcount=10000):
+            partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
                     count=0, batchcount=batchcount, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount)
+        self._lower_offsets = start_offsets
 
     def init_scanner(self):
         super(KafkaScannerDirect, self).init_scanner()
-        if not self._group or not self._keep_offsets:
-            self._lower_offsets = {partition: 0 for partition in self.init_consumer.offsets}
+        if not self._group or not self._keep_offsets or self._lower_offsets is not None:
+            if self._lower_offsets is None:
+                self._lower_offsets = {partition: 0 for partition in self.init_consumer.offsets}
             self.init_consumer.offsets.update(self._lower_offsets)
             self.init_consumer.count_since_commit += 1
             self.init_consumer.commit()
