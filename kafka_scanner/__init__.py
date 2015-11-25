@@ -162,7 +162,7 @@ class KafkaScanner(object):
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0,
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
-                        upper_offsets=None, min_lower_offsets=None, key_prefixes=None,
+                        start_offsets=None, min_lower_offsets=None, key_prefixes=None,
                         start_after=None, encoding='utf8'):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
@@ -176,7 +176,7 @@ class KafkaScanner(object):
         batchcount - max number of batches to yield (no limited if 0)
         partitions - set which partitions to scan
         logcount - scanned records period to print stats log line
-        upper_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
+        start_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
                         partition (except if keep_offsets is True)
         min_lower_offsets - Set limit lower offsets until which to scan.
         key_prefixes - Only yield records with given key prefixes. Has predecende over start_after.
@@ -208,7 +208,7 @@ class KafkaScanner(object):
         self._min_lower_offsets = defaultdict(int, min_lower_offsets or {})
         self._lower_offsets = None
         self._upper_offsets = None
-        self._latest_offsets = upper_offsets
+        self._latest_offsets = start_offsets
         self._key_prefixes = key_prefixes
         self._start_after = start_after
 
