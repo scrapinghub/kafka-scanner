@@ -109,6 +109,7 @@ def _seek_consumer(consumer, absolute_offset):
     # apply original method reset/fetch
     consumer.seek(0, 1)
 
+
 @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
 def get_latest_offsets(consumer, topic, partitions=None):
     partitions = partitions or consumer.offsets.keys()
@@ -202,7 +203,7 @@ class KafkaScanner(object):
 
         self.__logcount = logcount
         self.consumer = None
-        self.init_consumer = None
+        self._init_consumer = None
         self.processor = None
         self.processor_handlers = None
         self._min_lower_offsets = defaultdict(int, min_lower_offsets or {})
@@ -323,7 +324,13 @@ class KafkaScanner(object):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_init_consumer(self):
-        self.init_consumer = kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
+        return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
+
+    @property
+    def init_consumer(self):
+        if self._init_consumer is None:
+            self._init_consumer = self._create_init_consumer()
+        return self._init_consumer
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _commit_offsets(self, offsets):
@@ -499,9 +506,9 @@ class KafkaScanner(object):
             self.stats_logger.close()
             if self.consumer is not None:
                 self.consumer.stop()
-            if self.init_consumer is not None:
-                self.init_consumer.stop()
-                self.init_consumer.client.close()
+            if self._init_consumer is not None:
+                self._init_consumer.stop()
+                self._init_consumer.client.close()
             if self._dupes is not None:
                 for db in self._dupes.values():
                     db.close()
