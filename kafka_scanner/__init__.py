@@ -3,7 +3,6 @@ import time
 import shutil
 import tempfile
 import atexit
-import threading
 import logging
 
 from collections import Iterable, defaultdict, OrderedDict
@@ -132,9 +131,6 @@ class StatsLogger(object):
         self._stats_logline_totals = ''
         self._stats_getters = []
         self.closed = False
-        self.periodic_log_thread = threading.Thread(target=self.periodic_log)
-        self.periodic_log_thread.daemon = True
-        self.periodic_log_thread.start()
 
     def append_stat_var(self, name, get_func):
         """
@@ -148,11 +144,6 @@ class StatsLogger(object):
         stats = [g() for g in self._stats_getters]
         logline = self._stats_logline_totals if totals else self._stats_logline
         log.info(prefix + logline.format(*stats))
-
-    def periodic_log(self):
-        while not self.closed:
-            time.sleep(600)
-            self.log_stats('Activity: ')
 
     def close(self):
         self.closed = True
