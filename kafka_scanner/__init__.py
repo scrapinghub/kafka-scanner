@@ -210,7 +210,8 @@ class KafkaScanner(object):
             self._dupestempdir = tempfile.mkdtemp()
             self._dupes = keydefaultdict(self._make_dupe_dict)
 
-        self.__batchsize = batchsize or DEFAULT_BATCH_SIZE
+        self.__max_batchsize = batchsize or DEFAULT_BATCH_SIZE
+        self.__batchsize = self.__max_batchsize
         self._count = count
         self._keep_offsets = keep_offsets
         self._nodelete = nodelete
@@ -464,6 +465,7 @@ class KafkaScanner(object):
         messages = []
         while self.enabled:
             if self.consumer is None or self.are_there_messages_to_process():
+                mark = time.time()
                 for message in self.get_new_batch():
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
@@ -472,6 +474,11 @@ class KafkaScanner(object):
                         messages = []
                         self.__issued_batches += 1
                     messages.append(message)
+                newmark = time.time()
+                if newmark - mark > 180:
+                    self.__batchsize = max(100, self.__batchsize / 2)
+                elif newmark - mark < 30:
+                    self.__batchsize = min(self.__max_batchsize, self.__batchsize * 2)
             else:
                 break
         if messages:
