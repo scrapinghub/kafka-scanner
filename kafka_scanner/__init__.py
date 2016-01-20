@@ -475,10 +475,14 @@ class KafkaScanner(object):
                         self.__issued_batches += 1
                     messages.append(message)
                 newmark = time.time()
+                new_batchsize = self.__batchsize
                 if newmark - mark > 180:
-                    self.__batchsize = max(100, self.__batchsize / 2)
-                elif newmark - mark < 30:
-                    self.__batchsize = min(self.__max_batchsize, self.__batchsize * 2)
+                    new_batchsize = max(100, self.__batchsize / 2)
+                elif newmark - mark < 10:
+                    new_batchsize = min(self.__max_batchsize, self.__batchsize * 2)
+                if self.__batchsize != new_batchsize:
+                    self.__batchsize = new_batchsize
+                    log.info("Batchsize adjusted to %d", self.__batchsize)
             else:
                 break
         if messages:
