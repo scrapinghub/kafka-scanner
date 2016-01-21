@@ -80,8 +80,11 @@ class MessageCache(object):
 
     def values(self):
         if self._unique_keys:
-            return self._cache.values()
-        return list(self._cache)
+            while self._cache:
+                yield self._cache.popitem(False)[1]
+        else:
+            while self._cache:
+                yield self._cache.pop(0)
 
     def __contains__(self, key):
         if self._unique_keys:
@@ -434,8 +437,7 @@ class KafkaScanner(object):
         """
         Filter out deleted records
         """
-        while records:
-            record = records.pop(0)
+        for record in records:
             if not self.must_delete_record(record):
                 yield record
 
