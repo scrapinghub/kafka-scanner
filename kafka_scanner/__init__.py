@@ -14,6 +14,7 @@ from sqlitedict import SqliteDict
 from .msg_processor import MsgProcessor
 from .multiprocess import ExtendedMultiProcessConsumer
 from .utils import retry_on_exception
+from .totalsize import total_size
 
 
 DEFAULT_BATCH_SIZE = 10000
@@ -21,6 +22,7 @@ FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
 FETCH_SIZE_BYTES = 10 ** 7
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 10
 _MIN_SEEK_SAMPLE_SIZE = 50
+MAX_BATCH_MEMSIZE = 4 * 1024 * 1024 * 1024
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
 logging.getLogger("kafka.client").setLevel(logging.WARNING)
@@ -463,6 +465,7 @@ class KafkaScanner(object):
     def scan_topic_batches(self):
         self.init_scanner()
         messages = []
+        messages_msize = 0
         while self.enabled:
             if self.consumer is None or self.are_there_messages_to_process():
                 mark = time.time()
@@ -472,17 +475,17 @@ class KafkaScanner(object):
                     if len(messages) == self.__batchsize:
                         yield messages
                         messages = []
+                        messages_msize = 0
+                        self.__issued_batches += 1
+                    msize = total_size(message)
+                    if messages_msize + msize >= MAX_BATCH_MEMSIZE:
+                        log.info('Batch memory size too big. Sending %d messages long batch', len(messages))
+                        yield messages
+                        messages = []
+                        messages_msize = 0
                         self.__issued_batches += 1
                     messages.append(message)
-                newmark = time.time()
-                new_batchsize = self.__batchsize
-                if newmark - mark > 180:
-                    new_batchsize = max(100, self.__batchsize / 2)
-                elif newmark - mark < 10:
-                    new_batchsize = min(self.__max_batchsize, self.__batchsize * 2)
-                if self.__batchsize != new_batchsize:
-                    self.__batchsize = new_batchsize
-                    log.info("Batchsize adjusted to %d", self.__batchsize)
+                    messages_msize += msize
             else:
                 break
         if messages:
