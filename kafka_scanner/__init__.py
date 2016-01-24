@@ -14,7 +14,6 @@ from sqlitedict import SqliteDict
 from .msg_processor import MsgProcessor
 from .multiprocess import ExtendedMultiProcessConsumer
 from .utils import retry_on_exception
-from .totalsize import total_size
 
 
 DEFAULT_BATCH_SIZE = 10000
@@ -22,7 +21,6 @@ FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
 FETCH_SIZE_BYTES = 10 ** 7
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 10
 _MIN_SEEK_SAMPLE_SIZE = 50
-MAX_BATCH_MEMSIZE = 4 * 1024 * 1024 * 1024
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
 logging.getLogger("kafka.client").setLevel(logging.WARNING)
@@ -70,7 +68,6 @@ class MessageCache(object):
         else:
             self._cache = list()
             self._keys = list()
-        self.__msize = 0
 
     def append(self, record):
         if self._unique_keys:
@@ -78,7 +75,6 @@ class MessageCache(object):
         else:
             self._cache.append(record)
             self._keys.append(record['_key'])
-        self.__msize += total_size(record)
 
     def values(self):
         while self._cache:
@@ -108,10 +104,6 @@ class MessageCache(object):
         else:
             record = self._cache.pop(0)
         return record
-
-    @property
-    def msize(self):
-        return self.__msize
 
 
 # kafka-python 0.9.4 has not absolute offset seek
@@ -248,7 +240,7 @@ class KafkaScanner(object):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
 
     def init_scanner(self):
-        handlers_list = ('consume_messages', 'decompress_messages', 'unpack_messages')
+        handlers_list = ('consume_messages', 'decompress_messages')
         if not self.enabled:
             self.enabled = True
             self.processor = MsgProcessor(handlers_list, encoding=self.__encoding)
@@ -272,7 +264,7 @@ class KafkaScanner(object):
         upper_offset - starting upper offset
         sample_ratio - Ratio between offset jump step (self.__max_next_messages) and sample size.
         max_jump - max offset jump to get next samples. If not given, will be used max_next_messages.
-        
+
         Seek speed up will be essentially sample_ratio (unless self.__max_next_messages is too small, minimal sample size is 10)
         Consider that the bigger the speed up, more probabilities to loose smaller clusters, or some few records from the bigger
         ones near its limits
@@ -326,7 +318,7 @@ class KafkaScanner(object):
         return upper_offset
 
     def _get_sample(self, sample_size):
-        return [(offset, record['_key']) for _, offset, record in self.processor.process(sample_size)]
+        return [(offset, key) for _, offset, key, _ in self.processor.process(sample_size)]
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_init_consumer(self):
@@ -406,25 +398,25 @@ class KafkaScanner(object):
         messages = MessageCache(self._dupes is not None)
 
         while self.enabled and self.are_there_batch_messages_to_process(len(messages)):
-            for partition, offset, record in self.processor.process(max_next_messages):
-                lastkey = record['_key']
+            for partition, offset, key, msg in self.processor.process(max_next_messages):
                 self.__real_scanned_count += 1
+                record = {'_key': key, 'partition': partition, 'offset': offset, 'message': msg}
                 if offset < self._upper_offsets[partition]:
                     self.__scanned_count += 1
-                    if _startswith(lastkey, self._key_prefixes, self._start_after) \
-                                and (lastkey in messages or not self._record_is_dupe(partition, lastkey)):
+                    if _startswith(key, self._key_prefixes, self._start_after) \
+                                and (key in messages or not self._record_is_dupe(partition, key)):
                         if self.must_delete_record(record):
                             self.__deleted_count += 1
-                            if messages.get(lastkey, None) is not None and self.__issued_count > 0:
+                            if messages.get(key, None) is not None and self.__issued_count > 0:
                                 self.__issued_count -= 1
-                        elif lastkey not in messages or self.must_delete_record(messages[lastkey]):
+                        elif key not in messages or self.must_delete_record(messages[key]):
                             self.__issued_count += 1
                         else:
                             self.__dupes_count += 1
                         messages.append(record)
 
                 if self.__real_scanned_count % self.__logcount == 0:
-                    self.stats_logger.log_stats('Last key: {} '.format(lastkey))
+                    self.stats_logger.log_stats('Last key: {} '.format(key))
 
                 # keep control of scanned count if defined
                 if self.__issued_count > 0 and self.__issued_count == self._count:
@@ -464,6 +456,7 @@ class KafkaScanner(object):
         for processor in [self._init_scan_consumer,
                           self._scan_topic_batch,
                           self._filter_deleted_records,
+                          self.processor.processor_handlers.unpack_messages,
                           self._process_records]:
             pipeline = processor(pipeline)
 
@@ -471,7 +464,7 @@ class KafkaScanner(object):
         return pipeline
 
     def must_delete_record(self, record):
-        return len(record) == 1 and not self._nodelete
+        return not record['message'] and not self._nodelete
 
     def scan_topic_batches(self):
         self.init_scanner()
@@ -481,9 +474,7 @@ class KafkaScanner(object):
                 for message in self.get_new_batch():
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
-                    if len(messages) == self.__batchsize or messages.msize >= MAX_BATCH_MEMSIZE:
-                        if messages.msize >= MAX_BATCH_MEMSIZE:
-                            log.info('Batch memory size too big. Sending %d messages long batch', len(messages))
+                    if len(messages) == self.__batchsize:
                         yield messages.values()
                         messages = MessageCache(False)
                         self.__issued_batches += 1

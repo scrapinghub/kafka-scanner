@@ -53,7 +53,11 @@ class MsgProcessorHandlers(object):
     def unpack_messages(self, partitions_msgs):
         """ Deserialize a message to python structures """
 
-        for partition, offset, key, msg in partitions_msgs:
+        for pmsg in partitions_msgs:
+            key = pmsg['_key']
+            partition = pmsg['partition']
+            offset = pmsg['offset']
+            msg = pmsg['message']
             if msg:
                 try:
                     record = msgpack.unpackb(msg, encoding=self.__encoding)
@@ -63,8 +67,8 @@ class MsgProcessorHandlers(object):
                 else:
                     if isinstance(record, dict):
                         record['_key'] = key
-                        yield partition, offset, record
+                        yield record
                     else:
                         log.info('Record {} has wrong type'.format(key))
             else:
-                yield partition, offset, {'_key': key}
+                yield {'_key': key}
