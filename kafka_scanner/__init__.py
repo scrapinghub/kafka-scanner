@@ -470,7 +470,6 @@ class KafkaScanner(object):
         messages_msize = 0
         while self.enabled:
             if self.consumer is None or self.are_there_messages_to_process():
-                mark = time.time()
                 for message in self.get_new_batch():
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
