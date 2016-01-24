@@ -307,7 +307,7 @@ class KafkaScanner(object):
             lower_offset = max(lower_offset, self._min_lower_offsets[partition])
             _seek_consumer(consumer, lower_offset)
             sample = self._get_sample(sample_size)
-                
+
             cluster_found = _sample_hit(sample)
             if not cluster_found:
                 _seek_consumer(consumer, upper_offset - sample_size)
@@ -315,7 +315,7 @@ class KafkaScanner(object):
                 cluster_found = _sample_hit(sample)
             if not cluster_found:
                 upper_offset = lower_offset
-        
+
         if cluster_found is not None:
             offset, key = cluster_found
             log.info("Position found: {%s: %s} (%s)" % (partition, offset, key))
@@ -475,31 +475,23 @@ class KafkaScanner(object):
 
     def scan_topic_batches(self):
         self.init_scanner()
-        messages = []
-        messages_msize = 0
+        messages = MessageCache(False) # we don't need to dedupe here
         while self.enabled:
             if self.consumer is None or self.are_there_messages_to_process():
                 for message in self.get_new_batch():
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
-                    if len(messages) == self.__batchsize:
-                        yield messages
-                        messages = []
-                        messages_msize = 0
-                        self.__issued_batches += 1
-                    msize = total_size(message)
-                    if messages_msize + msize >= MAX_BATCH_MEMSIZE:
-                        log.info('Batch memory size too big. Sending %d messages long batch', len(messages))
-                        yield messages
-                        messages = []
-                        messages_msize = 0
+                    if len(messages) == self.__batchsize or messages.msize >= MAX_BATCH_MEMSIZE:
+                        if messages.msize >= MAX_BATCH_MEMSIZE:
+                            log.info('Batch memory size too big. Sending %d messages long batch', len(messages))
+                        yield messages.values()
+                        messages = MessageCache(False)
                         self.__issued_batches += 1
                     messages.append(message)
-                    messages_msize += msize
             else:
                 break
         if messages:
-            yield messages
+            yield messages.values()
             self.__issued_batches += 1
 
         self.commit_final_offsets()
@@ -643,7 +635,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
         self._create_scan_consumer()
 
     def _init_offsets(self, batchsize):
-        self._lower_offsets = self.consumer.offsets.copy() 
+        self._lower_offsets = self.consumer.offsets.copy()
         return batchsize / len(self._upper_offsets) or 1
 
     def _init_scan_consumer(self, batchsize):
