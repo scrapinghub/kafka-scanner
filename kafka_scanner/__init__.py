@@ -240,7 +240,7 @@ class KafkaScanner(object):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
 
     def init_scanner(self):
-        handlers_list = ('consume_messages', 'decompress_messages')
+        handlers_list = ('consume_messages',)
         if not self.enabled:
             self.enabled = True
             self.processor = MsgProcessor(handlers_list, encoding=self.__encoding)
@@ -456,6 +456,7 @@ class KafkaScanner(object):
         for processor in [self._init_scan_consumer,
                           self._scan_topic_batch,
                           self._filter_deleted_records,
+                          self.processor.processor_handlers.decompress_messages,
                           self.processor.processor_handlers.unpack_messages,
                           self._process_records]:
             pipeline = processor(pipeline)

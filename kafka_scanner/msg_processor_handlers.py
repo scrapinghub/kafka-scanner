@@ -34,7 +34,7 @@ class MsgProcessorHandlers(object):
         self.set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
         for partition, offmsg in self.consumer.get_messages(self.__next_messages):
-            yield partition, offmsg
+            yield partition, offmsg.offset, offmsg.message.key, offmsg.message.value
         newmark = time.time()
         if newmark - mark > 30:
             self.set_next_messages(self.__next_messages / 2 or 1)
@@ -44,11 +44,10 @@ class MsgProcessorHandlers(object):
     def decompress_messages(self, partitions_offmsgs):
         """ Decompress pre-defined compressed fields for each message. """
 
-        for partition, offmsg in partitions_offmsgs:
-            if offmsg.message.value:
-                yield partition, offmsg.offset, offmsg.message.key, self.decompress_fun(offmsg.message.value)
-            else:
-                yield partition, offmsg.offset, offmsg.message.key, offmsg.message.value
+        for pomsg in partitions_offmsgs:
+            if pomsg['message']:
+                pomsg['message'] = self.decompress_fun(pomsg['message'])
+            yield pomsg
 
     def unpack_messages(self, partitions_msgs):
         """ Deserialize a message to python structures """
