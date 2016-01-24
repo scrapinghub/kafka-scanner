@@ -70,6 +70,7 @@ class MessageCache(object):
         else:
             self._cache = list()
             self._keys = list()
+        self.__msize = 0
 
     def append(self, record):
         if self._unique_keys:
@@ -77,14 +78,11 @@ class MessageCache(object):
         else:
             self._cache.append(record)
             self._keys.append(record['_key'])
+        self.__msize += total_size(record)
 
     def values(self):
-        if self._unique_keys:
-            while self._cache:
-                yield self._cache.popitem(False)[1]
-        else:
-            while self._cache:
-                yield self._cache.pop(0)
+        while self._cache:
+            yield self._pop()
 
     def __contains__(self, key):
         if self._unique_keys:
@@ -103,6 +101,17 @@ class MessageCache(object):
 
     def __len__(self):
         return len(self._cache)
+
+    def _pop(self):
+        if self._unique_keys:
+            record = self._cache.popitem(False)[1]
+        else:
+            record = self._cache.pop(0)
+        return record
+
+    @property
+    def msize(self):
+        return self.__msize
 
 
 # kafka-python 0.9.4 has not absolute offset seek
