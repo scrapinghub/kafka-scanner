@@ -1,0 +1,14 @@
+
+image: scrapinghub
+
+script:
+  - git restore-mtime
+  - pip install -U tox shub
+  - tox
+
+deploy:
+  bash:
+    script:
+      - 'shub deploy-egg 7389 ; shub deploy-egg 28865 ; shub deploy-egg 33469'
+    when:
+      branch: master
