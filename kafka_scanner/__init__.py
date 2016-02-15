@@ -155,7 +155,7 @@ class StatsLogger(object):
         self.closed = True
 
 
-class KafkaScanner(object):
+class _KafkaScannerBase(object):
 
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0,
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
@@ -571,7 +571,7 @@ class KafkaScanner(object):
         return self._latest_offsets
 
 
-class KafkaScannerSimple(KafkaScanner):
+class KafkaScannerSimple(_KafkaScannerBase):
     """
     Scanner implemented around a Kafka SimpleConsumer
     """
@@ -592,6 +592,9 @@ class KafkaScannerSimple(KafkaScanner):
         self.processor.set_consumer(self.consumer)
         log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
         log.info("Target offsets: {}".format(repr(self._upper_offsets)))
+
+
+KafkaScanner = KafkaScannerSimple
 
 
 class KafkaScannerDirect(KafkaScannerSimple):
