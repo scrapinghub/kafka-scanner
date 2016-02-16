@@ -149,7 +149,7 @@ class FakeClient(object):
     def close(self):
         pass
 
-def create_fake_consumer(client_mock, consumer_mock, fail_on_offset):
+def create_fake_consumer(client_mock, consumer_mock, fail_on_offset=None):
     def _side_effect(*args, **kwargs):
         return FakeConsumer(client_mock.return_value, consumer_mock, fail_on_offset)
     return _side_effect
