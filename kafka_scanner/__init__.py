@@ -12,7 +12,6 @@ import kafka
 from sqlitedict import SqliteDict
 
 from .msg_processor import MsgProcessor
-from .multiprocess import ExtendedMultiProcessConsumer
 from .utils import retry_on_exception
 
 
@@ -155,7 +154,7 @@ class StatsLogger(object):
         self.closed = True
 
 
-class _KafkaScannerBase(object):
+class KafkaScanner(object):
 
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0,
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
@@ -371,13 +370,12 @@ class _KafkaScannerBase(object):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_scan_consumer(self):
-        self.consumer = ExtendedMultiProcessConsumer(
+        self.consumer = kafka.SimpleConsumer(
             client=self._client,
             partitions=self._upper_offsets.keys(),
             auto_commit=False,
             group=self._group,
             topic=self._topic,
-            num_procs=len(self._upper_offsets),
             fetch_size_bytes=FETCH_SIZE_BYTES,
             buffer_size=FETCH_BUFFER_SIZE_BYTES,
             max_buffer_size=MAX_FETCH_BUFFER_SIZE_BYTES,
@@ -571,30 +569,8 @@ class _KafkaScannerBase(object):
         return self._latest_offsets
 
 
-class KafkaScannerSimple(_KafkaScannerBase):
-    """
-    Scanner implemented around a Kafka SimpleConsumer
-    """
-    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def _create_scan_consumer(self):
-        self.consumer = kafka.SimpleConsumer(
-            client=self._client,
-            partitions=self._upper_offsets.keys(),
-            auto_commit=False,
-            group=self._group,
-            topic=self._topic,
-            fetch_size_bytes=FETCH_SIZE_BYTES,
-            buffer_size=FETCH_BUFFER_SIZE_BYTES,
-            max_buffer_size=MAX_FETCH_BUFFER_SIZE_BYTES,
-            iter_timeout=60,
-        )
-        self.consumer.provide_partition_info()
-        self.processor.set_consumer(self.consumer)
-        log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
-        log.info("Target offsets: {}".format(repr(self._upper_offsets)))
-
-
-KafkaScanner = KafkaScannerSimple
+# for backward compatibility
+KafkaScannerSimple = KafkaScanner
 
 
 class KafkaScannerDirect(KafkaScannerSimple):
