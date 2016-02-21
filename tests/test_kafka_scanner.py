@@ -136,12 +136,12 @@ class KafkaScannerTest(BaseScannerTest):
         samples = get_kafka_msg_samples(msgs)
 
         client_mock.return_value = FakeClient(samples, 3, count_variations={0: 2, 1: 3, 2: 2})
-        scanner, _, messages = self._get_scanner_messages(client_mock, simple_consumer_mock)
+        scanner, _, messages = self._get_scanner_messages(client_mock, simple_consumer_mock, batchsize=batchsize)
         msgsdict = {m['_key']: m['body'] for m in messages}
         self.assertEqual(len(set(msgsdict)), 900)
         self.assertEqual(scanner.scanned_count, 1100)
         self.assertEqual(scanner.issued_count, 900)
-        self.assertEqual(scanner.dupes_count, 0)
+        self.assertEqual(scanner.dupes_count, 100)
         self.assertEqual(scanner.deleted_count, 100)
         for i in range(100, 200):
             self.assertTrue('AD%.3d' % i not in msgsdict)
@@ -156,14 +156,14 @@ class KafkaScannerTest(BaseScannerTest):
         samples = get_kafka_msg_samples(msgs)
 
         client_mock.return_value = FakeClient(samples, 3, count_variations={0: 2, 1: 3, 2: 2})
-        scanner, _, messages = self._get_scanner_messages(client_mock, simple_consumer_mock)
+        scanner, _, messages = self._get_scanner_messages(client_mock, simple_consumer_mock, batchsize=batchsize)
         msgsdict = {m['_key']: m['body'] for m in messages}
 
         self.assertEqual(len(set(msgsdict)), 1000)
         self.assertEqual(scanner.scanned_count, 1100)
         self.assertEqual(scanner.issued_count, 1000)
-        self.assertEqual(scanner.dupes_count, 0)
-        self.assertEqual(scanner.deleted_count, 100)
+        self.assertEqual(scanner.dupes_count, 100)
+        self.assertEqual(scanner.deleted_count, 0)
 
     def test_kafka_scan_deleted_before_batches(self, client_mock, simple_consumer_mock):
         self.test_kafka_scan_deleted_before(batchsize=200)
@@ -290,7 +290,7 @@ class KafkaScannerOverrideTest(BaseScannerTest):
         self.assertEqual(scanner.scanned_count, 1100)
         self.assertEqual(scanner.issued_count, 900)
         self.assertEqual(scanner.deleted_count, 100)
-        self.assertEqual(scanner.dupes_count, 0)
+        self.assertEqual(scanner.dupes_count, 100)
         self.assertEqual(scanner.test_count, 900)
         for i in range(100, 200):
             self.assertTrue('AD%.3d' % i not in msgsdict)

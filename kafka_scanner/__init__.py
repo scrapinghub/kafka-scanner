@@ -405,10 +405,15 @@ class KafkaScanner(object):
                                 and (key in messages or not self._record_is_dupe(partition, key)):
                         if self.must_delete_record(record):
                             self.__deleted_count += 1
-                            if messages.get(key, None) is not None and self.__issued_count > 0:
-                                self.__issued_count -= 1
-                        elif key not in messages or self.must_delete_record(messages[key]):
+                            if messages.get(key, None) is not None:
+                                self.__issued_count = max(self.__issued_count - 1, 0)
+                                self.__dupes_count += 1
+                        elif key not in messages:
                             self.__issued_count += 1
+                        elif self.must_delete_record(messages[key]):
+                            self.__issued_count += 1
+                            self.__dupes_count += 1
+                            self.__deleted_count = max(self.__deleted_count - 1, 0)
                         else:
                             self.__dupes_count += 1
                         messages.append(record)
