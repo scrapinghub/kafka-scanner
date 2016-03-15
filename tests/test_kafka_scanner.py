@@ -86,7 +86,7 @@ class KafkaScannerTest(BaseScannerTest):
         self.test_kafka_scan_batchsize_count(num_partitions=3)
 
     def test_kafka_scan_batchcount(self, client_mock, simple_consumer_mock,
-                batchsize=10000, batchcount=3, num_partitions=1):
+                batchsize=10000, batchcount=3, num_partitions=1, expected_messages=1000):
          msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)]
          samples = get_kafka_msg_samples(msgs)
          client_mock.return_value = FakeClient(samples, num_partitions, count_variations={0: 2, 1: 3, 2: 2})
@@ -94,21 +94,20 @@ class KafkaScannerTest(BaseScannerTest):
                 batchsize=batchsize, batchcount=batchcount)
          self.assertEqual(number_of_batches, min(batchcount, 1000 / batchsize or 1))
          msgkeys = [m['_key'] for m in messages]
-         expected_messages = sum(scanner.latest_offsets[p] - scanner._lower_offsets[p] for p in scanner.latest_offsets)
          self.assertEqual(len(msgkeys), expected_messages)
          self.assertEqual(len(set(msgkeys)), expected_messages)
 
     def test_kafka_scan_batchcount_batches(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_batchcount(batchsize=200)
+        self.test_kafka_scan_batchcount(batchsize=200, expected_messages=600)
 
     def test_kafka_scan_batchcount_one_batch(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_batchcount(batchsize=200, batchcount=1)
+        self.test_kafka_scan_batchcount(batchsize=200, batchcount=1, expected_messages=200)
 
     def test_kafka_scan_batchcount_partitions(self, client_mock, simple_consumer_mock):
         self.test_kafka_scan_batchcount(num_partitions=3)
 
     def test_kafka_scan_batchcount_batches_partitions(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_batchcount(batchsize=200, num_partitions=3)
+        self.test_kafka_scan_batchcount(batchsize=200, num_partitions=3, expected_messages=600)
 
     def test_kafka_scan_dedupe(self, client_mock, simple_consumer_mock, batchsize=10000):
         msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)] + \
