@@ -343,6 +343,15 @@ class KafkaScanner(object):
             if not self._group or not self._keep_offsets:
                 upper_offsets = self.latest_offsets
         self._upper_offsets = {p: o for p, o in upper_offsets.items() if o > self._min_lower_offsets[p]}
+
+        # remove db dupes not used anymore
+        if self._dupes:
+            for p in self._dupes.keys():
+                if p not in self._upper_offsets:
+                    db = self._dupes.pop(p)
+                    db.close()
+                    os.remove(db.filename)
+
         partition_batchsize = 0
         if self._upper_offsets:
             partition_batchsize = batchsize
