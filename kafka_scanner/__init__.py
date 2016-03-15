@@ -248,7 +248,9 @@ class KafkaScanner(object):
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def get_commited_offsets(self):
         consumer = kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
-        return consumer.offsets
+        offsets = consumer.offsets
+        consumer.stop()
+        return offsets
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def seek_key_prefixes(self, partition, start_upper_offset, sample_ratio=100, max_jump=None):
