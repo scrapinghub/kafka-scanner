@@ -331,47 +331,6 @@ class KafkaScannerDirectTest(BaseScannerTest):
         self.assertEqual(number_of_batches, 3)
 
 
-
-@patch('kafka.SimpleConsumer', autospec=True)
-@patch('kafka.KafkaClient', autospec=True)
-class KafkaScannerResumeTest(BaseScannerTest):
-
-    def test_kafka_scan_resume(self, client_mock, simple_consumer_mock, batchsize=10000, expected_batches=(1, 1, 1)):
-        msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)]
-        samples = get_kafka_msg_samples(msgs)
-
-        client_mock.return_value = FakeClient(samples, 3, {0: 235, 1: 443, 2: 322}, {0: 2, 1: 2, 2: 2})
-
-        all_msgkeys = []
-        expected_cumulative_messages = 0
-        for (resume, job_expected_messages), job_expected_batches in zip([(False, 400), (True, 400), (True, 200)], expected_batches):
-            expected_cumulative_messages += job_expected_messages
-            scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
-                    keep_offsets=resume, batchsize=batchsize, count=job_expected_messages)
-            msgkeys = [m['_key'] for m in messages]
-            all_msgkeys.extend(msgkeys)
-            self.assertEqual(len(set(msgkeys)), job_expected_messages)
-            self.assertEqual(len(msgkeys), job_expected_messages)
-            self.assertEqual(number_of_batches, job_expected_batches)
-            self.assertEqual(len(set(all_msgkeys)), expected_cumulative_messages)
-            self.assertEqual(scanner.dupes_count, 0)
-            self.assertEqual(len(all_msgkeys), expected_cumulative_messages)
-
-    def test_kafka_scan_resume_batches(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_resume(batchsize=300, expected_batches=(2, 2, 1))
-
-    def test_kafka_scan_resume_after_fail(self, client_mock, simple_consumer_mock, batchsize=200):
-        msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)]
-        samples = get_kafka_msg_samples(msgs)
-        client_mock.return_value = FakeClient(samples, 3, {0: 235, 1: 443, 2: 322}, {0: 2, 1: 2, 2: 2})
-
-        self.assertRaisesRegexp(AssertionError, 'Failed on offset 250', self._get_scanner_messages, client_mock, simple_consumer_mock,
-                    fail_on_offset=250, batchsize=batchsize)
-
-        _, _, messages = self._get_scanner_messages(client_mock,
-                    simple_consumer_mock, batchsize=batchsize, keep_offsets=True)
-        self.assertEqual(len(messages), 802)
-
 @patch('kafka.SimpleConsumer', autospec=True)
 @patch('kafka.KafkaClient', autospec=True)
 class KafkaScannerDirectResumeTest(BaseScannerTest):
