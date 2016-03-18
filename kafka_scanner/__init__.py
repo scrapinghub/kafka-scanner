@@ -250,6 +250,7 @@ class KafkaScanner(object):
         consumer = kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
         offsets = consumer.offsets
         consumer.stop()
+        consumer.client.close()
         return offsets
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
@@ -314,6 +315,7 @@ class KafkaScanner(object):
             log.info("Position found: {%s: %s} (%s)" % (partition, offset, key))
             log.info("Upper offset: {%s: %s}" % (partition, upper_offset))
         consumer.stop()
+        consumer.client.close()
         self.processor.set_consumer(self.consumer)
         self.processor.processor_handlers.set_next_messages(scanner_sample_size)
         return upper_offset
@@ -374,6 +376,7 @@ class KafkaScanner(object):
     def _init_scan_consumer(self, batchsize):
         if self.consumer is not None:
             self.consumer.stop()
+            self.consumer.client.close()
         previous_lower_offsets = self._lower_offsets
 
         partition_batchsize = self._init_offsets(batchsize)
@@ -525,6 +528,7 @@ class KafkaScanner(object):
             self.stats_logger.close()
             if self.consumer is not None:
                 self.consumer.stop()
+                self.consumer.client.close()
             if self._init_consumer is not None:
                 self._init_consumer.stop()
                 self._init_consumer.client.close()
@@ -532,6 +536,7 @@ class KafkaScanner(object):
                 for db in self._dupes.values():
                     db.close()
                 shutil.rmtree(self._dupestempdir)
+            self._client.close()
 
     def commit_final_offsets(self):
         # may appear holes if number of partitions is not divisor of count
