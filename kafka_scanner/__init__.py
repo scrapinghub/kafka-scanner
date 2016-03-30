@@ -243,7 +243,7 @@ class KafkaScanner(object):
         if not self.enabled:
             self.enabled = True
             self.processor = MsgProcessor(handlers_list, encoding=self.__encoding)
-        self._create_init_consumer()
+        self._create_scan_consumer()
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def get_commited_offsets(self):
@@ -340,8 +340,12 @@ class KafkaScanner(object):
         self.init_consumer.count_since_commit += 1
         self.init_consumer.commit()
 
+    def _update_offsets(self, offsets):
+        log.info('Updating offsets: {}'.format(offsets))
+        self.consumer.offsets.update(offsets)
+
     def _init_offsets(self, batchsize):
-        upper_offsets = self._lower_offsets
+        upper_offsets = previous_lower_offsets = self._lower_offsets
         if not upper_offsets:
             upper_offsets = {p: o for p, o in self.init_consumer.offsets.items()}
             if not self._group or not self._keep_offsets:
@@ -369,30 +373,26 @@ class KafkaScanner(object):
                 else:
                     break
 
-            # sub consumers must start from newly computed lower offsets
-            self._commit_offsets(self._lower_offsets)
+            # create new consumer if partition list changes
+            if previous_lower_offsets is not None and set(previous_lower_offsets.keys()) != set(self._lower_offsets):
+                self._create_scan_consumer(self._lower_offsets.keys())
+
+            # consumer must restart from newly computed lower offsets
+            self._update_offsets(self._lower_offsets)
+        log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
+        log.info("Target offsets: {}".format(repr(self._upper_offsets)))
+
         return batchsize
 
-    def _init_scan_consumer(self, batchsize):
-        if self.consumer is not None:
-            self.consumer.stop()
-            self.consumer.client.close()
-        previous_lower_offsets = self._lower_offsets
+    def _init_batch(self, batchsize):
 
-        partition_batchsize = self._init_offsets(batchsize)
-        self._create_scan_consumer()
-
-        # commit previous lower offsets in order to read correct latest offsets if this job fails
-        if previous_lower_offsets:
-            self._commit_offsets(previous_lower_offsets)
-
-        return partition_batchsize
+        return self._init_offsets(batchsize)
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def _create_scan_consumer(self):
+    def _create_scan_consumer(self, partitions=None):
         self.consumer = kafka.SimpleConsumer(
             client=self._client,
-            partitions=self._upper_offsets.keys(),
+            partitions=partitions or self._partitions,
             auto_commit=False,
             group=self._group,
             topic=self._topic,
@@ -403,8 +403,6 @@ class KafkaScanner(object):
         )
         self.consumer.provide_partition_info()
         self.processor.set_consumer(self.consumer)
-        log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
-        log.info("Target offsets: {}".format(repr(self._upper_offsets)))
 
     def _scan_topic_batch(self, partition_batchsize):
 
@@ -476,7 +474,7 @@ class KafkaScanner(object):
             batchsize = min(self.__batchsize, self._count - self.__issued_count)
 
         pipeline = batchsize
-        for processor in [self._init_scan_consumer,
+        for processor in [self._init_batch,
                           self._scan_topic_batch,
                           self._filter_deleted_records,
                           self.processor.processor_handlers.decompress_messages,
@@ -494,7 +492,7 @@ class KafkaScanner(object):
         self.init_scanner()
         messages = MessageCache(False) # we don't need to dedupe here
         while self.enabled:
-            if self.consumer is None or self.are_there_messages_to_process():
+            if self.are_there_messages_to_process():
                 for message in self.get_new_batch():
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
@@ -558,6 +556,8 @@ class KafkaScanner(object):
         return record
 
     def are_there_messages_to_process(self):
+        if self._lower_offsets is None:
+            return True
         for partition, offset in self._lower_offsets.items():
             if offset > self._min_lower_offsets[partition]:
                 return True
@@ -636,7 +636,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
         self._lower_offsets = self.consumer.offsets.copy()
         return batchsize / len(self._upper_offsets) or 1
 
-    def _init_scan_consumer(self, batchsize):
+    def _init_batch(self, batchsize):
         previous_lower_offsets = self._lower_offsets
 
         partition_batchsize = self._init_offsets(batchsize)
@@ -644,6 +644,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
         # commit previous lower offsets in order to read correct latest offsets if this job fails
         if previous_lower_offsets:
             self._commit_offsets(previous_lower_offsets)
+
         return partition_batchsize
 
     def commit_final_offsets(self):
