@@ -342,7 +342,8 @@ class KafkaScanner(object):
 
     def _update_offsets(self, offsets):
         log.info('Updating offsets: {}'.format(offsets))
-        self.consumer.offsets.update(offsets)
+        for p, offset in offsets.items():
+            self.consumer.seek(offset, partition=p)
 
     def _init_offsets(self, batchsize):
         upper_offsets = previous_lower_offsets = self._lower_offsets
@@ -537,11 +538,7 @@ class KafkaScanner(object):
             self._client.close()
 
     def commit_final_offsets(self):
-        # may appear holes if number of partitions is not divisor of count
-        diff_offsets = {p: max(self._upper_offsets.get(p, 0) - o, 0) for p, o in self.consumer.offsets.items()}
-        if any(diff_offsets.values()):
-            commit_offsets = {p: self._lower_offsets.get(p, 0) + o for p, o in diff_offsets.items()}
-            self._commit_offsets(commit_offsets)
+        pass
 
     def run(self):
         """ Convenient method for iterating along topic. """
