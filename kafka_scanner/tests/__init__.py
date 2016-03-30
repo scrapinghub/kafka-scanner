@@ -74,8 +74,13 @@ class FakeConsumer(object):
         if self.count_since_commit >= self.auto_commit_every_n:
             self.commit()
 
-    def seek(self, offset, whence):
-        assert whence == 1
+    def seek(self, offset, whence=None, partition=None):
+        partitions = self.offsets.keys() if partition is None else [partition]
+        for p in partitions:
+            if whence is None:
+                self.offsets[p] = offset
+            elif whence == 1:
+                self.offsets[p] += offset
 
     def commit(self):
         if self.count_since_commit > 0:
