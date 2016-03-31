@@ -184,6 +184,8 @@ class KafkaScanner(object):
         if keep_offsets:
             assert group, 'keep_offsets option needs a group name'
         self._client = kafka.KafkaClient(map(bytes, brokers))
+        if topic not in self._client.topics:
+            raise ValueError("Topic not found: %s" % topic)
         self._topic = bytes(topic)
         self._group = None
         self._set_group(group)
