@@ -288,7 +288,7 @@ class KafkaScanner(object):
             return start_upper_offset
         cluster_found = None
         consumer = kafka.SimpleConsumer(
-                self._client, self._group + '_seeker',
+                self._client, None,
                 self._topic, partitions=[partition],
                 fetch_size_bytes=FETCH_SIZE_BYTES,
                 buffer_size=FETCH_BUFFER_SIZE_BYTES,
