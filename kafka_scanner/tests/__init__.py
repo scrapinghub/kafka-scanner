@@ -151,6 +151,10 @@ class FakeClient(object):
             result.append(LatestOffsetsResponse(p, [o]))
         return result
 
+    @property
+    def topics(self):
+        return self.topic_partitions.keys()
+
     def close(self):
         pass
 
