@@ -346,7 +346,6 @@ class KafkaScanner(object):
         self.init_consumer.commit()
 
     def _update_offsets(self, offsets):
-        log.info('Updating offsets: {}'.format(offsets))
         for p, offset in offsets.items():
             self.consumer.seek(offset, partition=p)
 
