@@ -156,7 +156,7 @@ class StatsLogger(object):
 
 class KafkaScanner(object):
 
-    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, count=0,
+    def __init__(self, brokers, topic, group=None, batchsize=DEFAULT_BATCH_SIZE, count=0,
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         start_offsets=None, min_lower_offsets=None, key_prefixes=None,
@@ -185,7 +185,8 @@ class KafkaScanner(object):
             assert group, 'keep_offsets option needs a group name'
         self._client = kafka.KafkaClient(map(bytes, brokers))
         self._topic = bytes(topic)
-        self._group = bytes(group) if isinstance(group, basestring) else None
+        self._group = None
+        self._set_group(group)
         self._partitions = partitions
         self.enabled = False
         self.__real_scanned_count = 0
@@ -237,6 +238,10 @@ class KafkaScanner(object):
 
     def _make_dupe_dict(self, partition):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
+
+    def _set_group(self, group):
+        if group is not None:
+            log.warning("This class does not allow consumer group. Set to None.")
 
     def init_scanner(self):
         handlers_list = ('consume_messages',)
@@ -628,6 +633,10 @@ class KafkaScannerDirect(KafkaScannerSimple):
             self._lower_offsets = self.init_consumer.offsets.copy()
         self._upper_offsets = self.latest_offsets
         self._create_scan_consumer()
+
+    def _set_group(self, group):
+        if isinstance(group, basestring):
+            self._group = bytes(group)
 
     def _init_offsets(self, batchsize):
         self._lower_offsets = self.consumer.offsets.copy()
