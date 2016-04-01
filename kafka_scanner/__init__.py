@@ -182,14 +182,13 @@ class KafkaScanner(object):
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         """
         assert isinstance(brokers, Iterable)
-        if keep_offsets:
-            assert group, 'keep_offsets option needs a group name'
         self._client = kafka.KafkaClient(map(bytes, brokers))
         if topic not in self._client.topics:
             raise ValueError("Topic not found: %s" % topic)
         self._topic = bytes(topic)
         self._group = None
-        self._set_group(group)
+        self._keep_offsets = False
+        self._set_consumer_group(group, keep_offsets)
         self._partitions = partitions
         self.enabled = False
         self.__real_scanned_count = 0
@@ -222,7 +221,6 @@ class KafkaScanner(object):
         self.__max_batchsize = batchsize or DEFAULT_BATCH_SIZE
         self.__batchsize = self.__max_batchsize
         self._count = count
-        self._keep_offsets = keep_offsets
         self._nodelete = nodelete
 
         self.stats_logger = StatsLogger()
@@ -242,9 +240,9 @@ class KafkaScanner(object):
     def _make_dupe_dict(self, partition):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
 
-    def _set_group(self, group):
-        if group is not None:
-            log.warning("This class does not allow consumer group. Set to None.")
+    def _set_consumer_group(self, group, keep_offsets):
+        if group is not None or keep_offsets:
+            log.warning("This class does not allow consumer group. Set consumer group to None and keep_offsets to False.")
 
     def init_scanner(self):
         handlers_list = ('consume_messages',)
@@ -638,9 +636,12 @@ class KafkaScannerDirect(KafkaScannerSimple):
         log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
         log.info("Target offsets: {}".format(repr(self._upper_offsets)))
 
-    def _set_group(self, group):
+    def _set_consumer_group(self, group, keep_offsets):
         if isinstance(group, basestring):
             self._group = bytes(group)
+        if keep_offsets:
+            assert self._group, 'keep_offsets option needs a group name'
+        self._keep_offsets = keep_offsets
 
     def _init_offsets(self, batchsize):
         self._lower_offsets = self.consumer.offsets.copy()
