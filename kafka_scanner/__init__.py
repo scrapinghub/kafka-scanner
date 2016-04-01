@@ -634,6 +634,8 @@ class KafkaScannerDirect(KafkaScannerSimple):
             self._lower_offsets = self.init_consumer.offsets.copy()
         self._upper_offsets = self.latest_offsets
         self._create_scan_consumer()
+        log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
+        log.info("Target offsets: {}".format(repr(self._upper_offsets)))
 
     def _set_group(self, group):
         if isinstance(group, basestring):
