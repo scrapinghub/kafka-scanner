@@ -173,6 +173,7 @@ class KafkaScanner(object):
         batchcount - max number of batches to yield (no limited if 0)
         partitions - set which partitions to scan
         logcount - scanned records period to print stats log line
+        max_next_messages - max number of messages to retrieve in a single request from kafka server.
         start_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
                         partition (except if keep_offsets is True)
         min_lower_offsets - Set limit lower offsets until which to scan.
