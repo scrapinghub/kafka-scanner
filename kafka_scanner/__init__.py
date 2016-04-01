@@ -176,7 +176,7 @@ class KafkaScanner(object):
         start_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
                         partition (except if keep_offsets is True)
         min_lower_offsets - Set limit lower offsets until which to scan.
-        key_prefixes - Only yield records with given key prefixes. Has predecende over start_after.
+        key_prefixes - Only yield records with given key prefixes. Has precedence over start_after.
         start_after - Only yield records with key prefixes after the given one.
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         """
