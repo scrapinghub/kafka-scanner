@@ -601,6 +601,11 @@ class KafkaScanner(object):
     def partitions(self):
         return self._partitions
 
+    @property
+    def topic(self):
+        return self._topic
+
+
 # for backward compatibility
 KafkaScannerSimple = KafkaScanner
 
