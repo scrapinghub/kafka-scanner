@@ -597,6 +597,9 @@ class KafkaScanner(object):
             self._latest_offsets = get_latest_offsets(self.init_consumer, self._topic, self._partitions)
         return self._latest_offsets
 
+    @property
+    def partitions(self):
+        return self._partitions
 
 # for backward compatibility
 KafkaScannerSimple = KafkaScanner
