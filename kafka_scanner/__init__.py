@@ -1,3 +1,5 @@
+from __future__ import division
+
 import os
 import time
 import shutil
@@ -220,6 +222,7 @@ class KafkaScanner(object):
 
         self.__max_batchsize = batchsize or DEFAULT_BATCH_SIZE
         self.__batchsize = self.__max_batchsize
+        self.__scan_excess = 1
         self._count = count
         self._nodelete = nodelete
 
@@ -284,7 +287,7 @@ class KafkaScanner(object):
             return None
 
         max_jump = min(max_jump or self.__max_next_messages, self.__max_next_messages)
-        sample_size = max(_MIN_SEEK_SAMPLE_SIZE, max_jump / sample_ratio)
+        sample_size = max(_MIN_SEEK_SAMPLE_SIZE, max_jump // sample_ratio)
         if not self._key_prefixes and not self._start_after:
             return start_upper_offset
         cluster_found = None
@@ -368,14 +371,14 @@ class KafkaScanner(object):
 
         partition_batchsize = 0
         if self._upper_offsets:
-            partition_batchsize = batchsize
+            partition_batchsize = max(int(batchsize * self.__scan_excess), batchsize)
             for p in self._upper_offsets:
                 self._upper_offsets[p] = self.seek_key_prefixes(p, self._upper_offsets[p], max_jump=partition_batchsize)
             self._lower_offsets = self._upper_offsets.copy()
             for p in self._upper_offsets:
                 if partition_batchsize > 0:
                     self._lower_offsets[p] = max(self._upper_offsets[p] - partition_batchsize, self._min_lower_offsets[p])
-                    partition_batchsize = partition_batchsize - self._upper_offsets[p] + self._lower_offsets[p]
+                    partition_batchsize = partition_batchsize - (self._upper_offsets[p] - self._lower_offsets[p])
                 else:
                     break
 
@@ -449,6 +452,7 @@ class KafkaScanner(object):
                 if self.__issued_count > 0 and self.__issued_count == self._count:
                     self.enabled = False
                     break
+        self.__scan_excess = partition_batchsize / len(messages) if len(messages) > 0 else self.__scan_excess * 2
 
         return messages.values()
 
@@ -653,7 +657,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     def _init_offsets(self, batchsize):
         self._lower_offsets = self.consumer.offsets.copy()
-        return batchsize / len(self._upper_offsets) or 1
+        return batchsize // len(self._upper_offsets) or 1
 
     def _init_batch(self, batchsize):
         previous_lower_offsets = self._lower_offsets
