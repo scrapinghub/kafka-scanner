@@ -249,7 +249,7 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertTrue(scanner.scanned_count <= max_scanned_count)
 
     def test_kafka_scan_seek_start_after_batches(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_seek_start_after(batchsize=200, max_scanned_count=4400)
+        self.test_kafka_scan_seek_start_after(batchsize=200, max_scanned_count=4500)
 
     def test_encoding(self, client_mock, simple_consumer_mock):
         msgs = [('AD001', u'hol\xc3\xa1'.encode('latin1'))]
