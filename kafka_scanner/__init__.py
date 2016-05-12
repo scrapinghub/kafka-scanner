@@ -28,6 +28,7 @@ logging.getLogger("kafka.client").setLevel(logging.WARNING)
 
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 
 import sys, socket
