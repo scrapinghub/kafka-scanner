@@ -375,13 +375,19 @@ class KafkaScanner(object):
             for p in self._upper_offsets:
                 self._upper_offsets[p] = self.seek_key_prefixes(p, self._upper_offsets[p], max_jump=partition_batchsize)
             self._lower_offsets = self._upper_offsets.copy()
-            for p in self._upper_offsets:
+            total_offsets_run = 0
+            for p in sorted(self._upper_offsets.keys()):
+                # readjust partition_batchsize when a partition scan starts from latest offset
+                if total_offsets_run > 0 and partition_batchsize > batchsize:
+                    partition_batchsize = batchsize
                 if partition_batchsize > 0:
                     self._lower_offsets[p] = max(self._upper_offsets[p] - partition_batchsize, self._min_lower_offsets[p])
-                    partition_batchsize = partition_batchsize - (self._upper_offsets[p] - self._lower_offsets[p])
+                    offsets_run = self._upper_offsets[p] - self._lower_offsets[p]
+                    total_offsets_run += offsets_run
+                    partition_batchsize = partition_batchsize - offsets_run
                 else:
                     break
-
+            log.info("Offset run: %d", total_offsets_run)
             # create new consumer if partition list changes
             if previous_lower_offsets is not None and set(previous_lower_offsets.keys()) != set(self._lower_offsets):
                 self._create_scan_consumer(self._lower_offsets.keys())
