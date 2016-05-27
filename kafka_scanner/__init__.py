@@ -667,14 +667,8 @@ class KafkaScannerDirect(KafkaScannerSimple):
         return batchsize // len(self._upper_offsets) or 1
 
     def _init_batch(self, batchsize):
-        previous_lower_offsets = self._lower_offsets
-
         partition_batchsize = self._init_offsets(batchsize)
-
-        # commit previous lower offsets in order to read correct latest offsets if this job fails
-        if previous_lower_offsets:
-            self._commit_offsets(previous_lower_offsets)
-
+        self._commit_offsets(self._lower_offsets)
         return partition_batchsize
 
     def commit_final_offsets(self):
