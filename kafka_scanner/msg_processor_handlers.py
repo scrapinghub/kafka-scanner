@@ -56,7 +56,7 @@ class MsgProcessorHandlers(object):
             key = pmsg['_key']
             partition = pmsg['partition']
             offset = pmsg['offset']
-            msg = pmsg['message']
+            msg = pmsg.pop('message')
             if msg:
                 try:
                     record = msgpack.unpackb(msg, encoding=self.__encoding)
@@ -65,9 +65,9 @@ class MsgProcessorHandlers(object):
                     continue
                 else:
                     if isinstance(record, dict):
-                        record['_key'] = key
-                        yield record
+                        pmsg['record'] = record
+                        yield pmsg
                     else:
                         log.info('Record {} has wrong type'.format(key))
             else:
-                yield {'_key': key}
+                yield pmsg

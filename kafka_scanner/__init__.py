@@ -480,9 +480,9 @@ class KafkaScanner(object):
             if not self.must_delete_record(record):
                 yield record
 
-    def _process_records(self, records):
-        for record in records:
-            yield self.process_record(record)
+    def _process_offsetmsgs(self, omsgs):
+        for omsg in omsgs:
+            yield self.process_offsetmsg(omsg)
 
     def get_new_batch(self):
 
@@ -496,7 +496,7 @@ class KafkaScanner(object):
                           self._filter_deleted_records,
                           self.processor.processor_handlers.decompress_messages,
                           self.processor.processor_handlers.unpack_messages,
-                          self._process_records]:
+                          self._process_offsetmsgs]:
             pipeline = processor(pipeline)
 
         log.info("Last offsets: {}".format(repr(self.consumer.offsets)))
@@ -567,6 +567,11 @@ class KafkaScanner(object):
 
     def process_record(self, record):
         return record
+
+    def process_offsetmsg(self, omsg):
+        record = omsg.get('record', {})
+        record['_key'] = omsg['_key']
+        return self.process_record(record)
 
     def are_there_messages_to_process(self):
         if self._lower_offsets is None:
