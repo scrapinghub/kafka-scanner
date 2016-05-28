@@ -30,7 +30,7 @@ class MsgProcessorHandlers(object):
         """ Get messages batch from Kafka (list at output) """
         # get messages list from kafka
         if self.__next_messages == 0:
-            self.set_next_messages(1000)
+            self.set_next_messages(min(1000, max_next_messages))
         self.set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
         for partition, offmsg in self.consumer.get_messages(self.__next_messages):
