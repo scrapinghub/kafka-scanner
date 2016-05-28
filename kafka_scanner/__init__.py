@@ -507,21 +507,21 @@ class KafkaScanner(object):
 
     def scan_topic_batches(self):
         self.init_scanner()
-        messages = MessageCache(False) # we don't need to dedupe here
+        records = MessageCache(False) # we don't need to dedupe here
         while self.enabled:
             if self.are_there_messages_to_process():
                 for message in self.get_new_batch():
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
-                    if len(messages) == self.__batchsize:
-                        yield messages.values()
-                        messages = MessageCache(False)
+                    if len(records) == self.__batchsize:
+                        yield records.values()
+                        records = MessageCache(False)
                         self.__issued_batches += 1
-                    messages.append(message)
+                    records.append(message['record'])
             else:
                 break
-        if messages:
-            yield messages.values()
+        if records:
+            yield records.values()
             self.__issued_batches += 1
 
         self.commit_final_offsets()
@@ -569,9 +569,10 @@ class KafkaScanner(object):
         return record
 
     def process_offsetmsg(self, omsg):
-        record = omsg.get('record', {})
+        record = omsg.setdefault('record', {})
         record['_key'] = omsg['_key']
-        return self.process_record(record)
+        record = self.process_record(record)
+        return omsg 
 
     def are_there_messages_to_process(self):
         if self._lower_offsets is None:
