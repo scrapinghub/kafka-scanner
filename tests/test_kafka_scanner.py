@@ -7,7 +7,6 @@ from kafka_scanner import KafkaScanner, KafkaScannerDirect
 from kafka_scanner.tests import (get_kafka_msg_samples, FakeClient,
         create_fake_consumer)
 
-
 class BaseScannerTest(unittest.TestCase):
     scannerclass = KafkaScanner
     def _get_scanner_messages(self, client_mock, simple_consumer_mock,
@@ -17,10 +16,13 @@ class BaseScannerTest(unittest.TestCase):
         batches = scanner.scan_topic_batches()
         number_of_batches = 0
         messages = []
-        for batch in batches:
-            number_of_batches += 1
-            for m in batch:
-                messages.append(m)
+        try:
+            for batch in batches:
+                number_of_batches += 1
+                for m in batch:
+                    messages.append(m)
+        except AssertionError:
+            pass
         return scanner, number_of_batches, messages
 
 
@@ -338,20 +340,56 @@ class KafkaScannerDirectResumeTest(BaseScannerTest):
     msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)]
     samples = get_kafka_msg_samples(msgs)
 
-    def test_kafka_scan_resume(self, client_mock, simple_consumer_mock, batchsize=100):
+    def test_kafka_scan_resume_simple_partition(self, client_mock, simple_consumer_mock, batchsize=100):
 
-        client_mock.return_value = FakeClient(self.samples, 3, {0: 235, 1: 443, 2: 322}, {0: 2, 1: 2, 2: 2})
+        client_mock.return_value = FakeClient(self.samples, 1)
 
-        resume = False
         all_msgkeys = set()
         sum_msgkeys = 0
-        for batchcount in (2, 2, 3):
+        for batchcount in (2, 2, 4, 2):
             _, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
-                        keep_offsets=resume, batchsize=batchsize, batchcount=batchcount)
-            resume = True
+                        keep_offsets=True, batchsize=batchsize, batchcount=batchcount)
             msgkeys = set([m['_key'] for m in messages])
             sum_msgkeys += len(msgkeys)
             all_msgkeys.update(msgkeys)
-            self.assertEqual(number_of_batches, batchcount)
+            self.assertEqual(len(msgkeys), batchcount * batchsize)
             self.assertTrue(batchsize * (batchcount - 1) <= len(msgkeys) <= batchsize * batchcount)
         self.assertEqual(len(all_msgkeys), sum_msgkeys)
+        self.assertEqual(sum_msgkeys, 1000)
+
+    def test_kafka_scan_resume_simple_partition_after_fail(self, client_mock, simple_consumer_mock, batchsize=100):
+
+        client_mock.return_value = FakeClient(self.samples, 1)
+
+        all_msgkeys = set()
+        sum_msgkeys = 0
+        for batchcount, fail_on_offset in ((5, 450), (7, None)):
+            scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
+                        keep_offsets=True, batchsize=batchsize, batchcount=batchcount, max_next_messages=100, fail_on_offset=fail_on_offset)
+            msgkeys = set([m['_key'] for m in messages])
+            sum_msgkeys += len(msgkeys)
+            all_msgkeys.update(msgkeys)
+        self.assertEqual(len(all_msgkeys), sum_msgkeys)
+        self.assertEqual(sum_msgkeys, 1000)
+
+
+#     def test_kafka_scan_resume(self, client_mock, simple_consumer_mock, batchsize=100):
+#
+#         client_mock.return_value = FakeClient(self.samples, 3, {0: 235, 1: 443, 2: 322}, {0: 2, 1: 2, 2: 2})
+#
+#         all_msgkeys = set()
+#         sum_msgkeys = 0
+#         for batchcount in (2, 2, 4, 2):
+#             _, number_of_batches, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
+#                         keep_offsets=True, batchsize=batchsize, batchcount=batchcount)
+#             msgkeys = set([m['_key'] for m in messages])
+#             sum_msgkeys += len(msgkeys)
+#             all_msgkeys.update(msgkeys)
+#             self.assertEqual(number_of_batches, batchcount)
+#             self.assertTrue(batchsize * (batchcount - 1) <= len(msgkeys) <= batchsize * batchcount)
+#         self.assertEqual(len(all_msgkeys), sum_msgkeys)
+#         self.assertEqual(sum_msgkeys, 1000)
+#         # check we got all consecutive keys
+#         intkeys = set(int(k.replace('AD', '')) for k in all_msgkeys)
+#         self.assertEqual(intkeys, set(range(sum_msgkeys)))
+#

@@ -401,7 +401,6 @@ class KafkaScanner(object):
         return batchsize
 
     def _init_batch(self, batchsize):
-
         return self._init_offsets(batchsize)
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
@@ -505,6 +504,9 @@ class KafkaScanner(object):
     def must_delete_record(self, record):
         return not record['message'] and not self._nodelete
 
+    def _end_batch_commit(self, message):
+        pass
+
     def scan_topic_batches(self):
         self.init_scanner()
         records = MessageCache(False) # we don't need to dedupe here
@@ -514,6 +516,7 @@ class KafkaScanner(object):
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
                     if len(records) == self.__batchsize:
+                        self._end_batch_commit(message)
                         yield records.values()
                         records = MessageCache(False)
                         self.__issued_batches += 1
@@ -622,7 +625,6 @@ class KafkaScanner(object):
     def topic(self):
         return self._topic
 
-
 # for backward compatibility
 KafkaScannerSimple = KafkaScanner
 
@@ -673,9 +675,12 @@ class KafkaScannerDirect(KafkaScannerSimple):
         return batchsize // len(self._upper_offsets) or 1
 
     def _init_batch(self, batchsize):
-        partition_batchsize = self._init_offsets(batchsize)
-        self._commit_offsets(self._lower_offsets)
-        return partition_batchsize
+        return self._init_offsets(batchsize)
+
+    def _end_batch_commit(self, message):
+        commit_offsets = self._lower_offsets.copy()
+        commit_offsets[message['partition']] = message['offset']
+        self._commit_offsets(commit_offsets)
 
     def commit_final_offsets(self):
         commit_offsets = self.consumer.offsets
