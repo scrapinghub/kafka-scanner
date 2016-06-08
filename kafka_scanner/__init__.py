@@ -163,7 +163,7 @@ class KafkaScanner(object):
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         start_offsets=None, min_lower_offsets=None, key_prefixes=None,
-                        start_after=None, encoding='utf8'):
+                        start_after=None, encoding='utf8', batch_autocommit=True):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -183,6 +183,7 @@ class KafkaScanner(object):
         key_prefixes - Only yield records with given key prefixes. Has precedence over start_after.
         start_after - Only yield records with key prefixes after the given one.
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
+        batch_autocommit - If True, commit offsets each time a batch is finished
         """
         assert isinstance(brokers, Iterable)
         self._client = kafka.KafkaClient(map(bytes, brokers))
@@ -202,6 +203,7 @@ class KafkaScanner(object):
         self.__encoding = encoding
         self.__batchcount = batchcount
         self.__issued_batches = 0
+        self.__batch_autocommit = batch_autocommit
 
         self.__logcount = logcount
         self.consumer = None
@@ -504,7 +506,7 @@ class KafkaScanner(object):
     def must_delete_record(self, record):
         return not record['message'] and not self._nodelete
 
-    def _end_batch_commit(self, message):
+    def end_batch_commit(self, message):
         pass
 
     def scan_topic_batches(self):
@@ -516,7 +518,8 @@ class KafkaScanner(object):
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
                     if len(records) == self.__batchsize:
-                        self._end_batch_commit(message)
+                        if self.__batch_autocommit:
+                            self.end_batch_commit(message)
                         yield records.values()
                         records = MessageCache(False)
                         self.__issued_batches += 1
@@ -677,7 +680,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
     def _init_batch(self, batchsize):
         return self._init_offsets(batchsize)
 
-    def _end_batch_commit(self, message):
+    def end_batch_commit(self, message):
         commit_offsets = self._lower_offsets.copy()
         commit_offsets[message['partition']] = message['offset']
         self._commit_offsets(commit_offsets)
