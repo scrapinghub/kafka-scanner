@@ -216,6 +216,7 @@ class KafkaScanner(object):
         self._latest_offsets = start_offsets
         self._key_prefixes = key_prefixes
         self._start_after = start_after
+        self.__last_message = None
 
         self._dupestempdir = None
         self._dupes = None
@@ -506,7 +507,7 @@ class KafkaScanner(object):
     def must_delete_record(self, record):
         return not record['message'] and not self._nodelete
 
-    def end_batch_commit(self, message):
+    def end_batch_commit(self):
         pass
 
     def scan_topic_batches(self):
@@ -515,11 +516,12 @@ class KafkaScanner(object):
         while self.enabled:
             if self.are_there_messages_to_process():
                 for message in self.get_new_batch():
+                    self.__last_message = message
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
                     if len(records) == self.__batchsize:
                         if self.__batch_autocommit:
-                            self.end_batch_commit(message)
+                            self.end_batch_commit()
                         yield records.values()
                         records = MessageCache(False)
                         self.__issued_batches += 1
@@ -628,6 +630,11 @@ class KafkaScanner(object):
     def topic(self):
         return self._topic
 
+    @property
+    def last_message(self):
+        return self.__last_message
+
+
 # for backward compatibility
 KafkaScannerSimple = KafkaScanner
 
@@ -680,10 +687,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
     def _init_batch(self, batchsize):
         return self._init_offsets(batchsize)
 
-    def end_batch_commit(self, message):
-        commit_offsets = self._lower_offsets.copy()
-        commit_offsets[message['partition']] = message['offset']
-        self._commit_offsets(commit_offsets)
+    def end_batch_commit(self):
+        if self.last_message:
+            commit_offsets = self._lower_offsets.copy()
+            commit_offsets[self.last_message['partition']] = self.last_message['offset']
+            self._commit_offsets(commit_offsets)
 
     def commit_final_offsets(self):
         commit_offsets = self.consumer.offsets
