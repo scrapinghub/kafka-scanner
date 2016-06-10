@@ -168,8 +168,8 @@ class KafkaScanner(object):
         supported kwargs:
 
         keep_offsets - don't initialize partition read offsets. Instead use last registered (enable for resuming jobs)
-        nodedupe - yield all records, regardless duplicated keys. Default is to dedupe.
-        nodelete - yield also deletion records
+        nodedupe - If True, yield all records, regardless duplicated keys. Default is False (do dedupe)
+        nodelete - If True, yield also deletion records. Default is False.
         count - number of records to yield
         batchsize - number of records per batch. Bigger is more efficient, but more memory demanding.
                     Defaults to DEFAULT_BATCH_SIZE
