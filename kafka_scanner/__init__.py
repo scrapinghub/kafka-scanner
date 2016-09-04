@@ -157,6 +157,7 @@ class StatsLogger(object):
     def close(self):
         self.closed = True
 
+_client = None
 
 class KafkaScanner(object):
 
@@ -187,7 +188,9 @@ class KafkaScanner(object):
         batch_autocommit - If True, commit offsets each time a batch is finished
         """
         assert isinstance(brokers, Iterable)
-        self._client = kafka.KafkaClient(map(bytes, brokers))
+        global _client
+        self._client = _client = _client or kafka.KafkaClient(map(bytes, brokers))
+
         if topic not in self._client.topics:
             raise ValueError("Topic not found: %s" % topic)
         self._topic = bytes(topic)
