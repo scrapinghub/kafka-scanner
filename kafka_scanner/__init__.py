@@ -248,6 +248,8 @@ class KafkaScanner(object):
         self.__closed = False
         atexit.register(self.close)
 
+        self.__iter_batches = None
+
     def _make_dupe_dict(self, partition):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
 
@@ -638,6 +640,12 @@ class KafkaScanner(object):
     def last_message(self):
         return self.__last_message
 
+    def __iter__(self):
+        self.__iter_batches = self.__iter_batches or self.scan_topic_batches()
+        return self
+
+    def next(self):
+        return next(self.__iter_batches)
 
 # for backward compatibility
 KafkaScannerSimple = KafkaScanner
