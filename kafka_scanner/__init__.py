@@ -26,6 +26,7 @@ _MIN_SEEK_SAMPLE_SIZE = 50
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
 logging.getLogger("kafka.client").setLevel(logging.WARNING)
+logging.getLogger("kafka.conn").setLevel(logging.WARNING)
 
 
 log = logging.getLogger(__name__)
