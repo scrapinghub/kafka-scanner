@@ -355,7 +355,7 @@ class KafkaScanner(object):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _commit_offsets(self, offsets):
-        log.info('Commiting offsets: {}'.format(offsets))
+        log.info('Commiting offsets for group %s: %s', self._group, offsets)
         self.init_consumer.offsets.update(offsets)
         self.init_consumer.count_since_commit += 1
         self.init_consumer.commit()
