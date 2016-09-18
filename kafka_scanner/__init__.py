@@ -355,7 +355,7 @@ class KafkaScanner(object):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _commit_offsets(self, offsets):
-        log.info('Commiting offsets for group %s: %s', self._group, offsets)
+        log.info('Commiting offsets for group %s (topic %s): %s', self._group, self._topic, offsets)
         self.init_consumer.offsets.update(offsets)
         self.init_consumer.count_since_commit += 1
         self.init_consumer.commit()
@@ -405,8 +405,8 @@ class KafkaScanner(object):
 
             # consumer must restart from newly computed lower offsets
             self._update_offsets(self._lower_offsets)
-        log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
-        log.info("Target offsets: {}".format(repr(self._upper_offsets)))
+        log.info("Initial offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
+        log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
 
         return batchsize
 
@@ -508,7 +508,7 @@ class KafkaScanner(object):
                           self._process_offsetmsgs]:
             pipeline = processor(pipeline)
 
-        log.info("Last offsets: {}".format(repr(self.consumer.offsets)))
+        log.info("Last offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
         return pipeline
 
     def must_delete_record(self, record):
@@ -683,8 +683,8 @@ class KafkaScannerDirect(KafkaScannerSimple):
             self._lower_offsets = self.init_consumer.offsets.copy()
         self._upper_offsets = self.latest_offsets
         self._create_scan_consumer()
-        log.info("Initial offsets: {}".format(repr(self.consumer.offsets)))
-        log.info("Target offsets: {}".format(repr(self._upper_offsets)))
+        log.info("Initial offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
+        log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
 
     def _set_consumer_group(self, group, keep_offsets):
         if isinstance(group, basestring):
