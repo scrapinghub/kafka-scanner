@@ -22,7 +22,6 @@ DEFAULT_BATCH_SIZE = 10000
 FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
 FETCH_SIZE_BYTES = 10 ** 7
 MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 10
-_MIN_SEEK_SAMPLE_SIZE = 50
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
 logging.getLogger("kafka.client").setLevel(logging.WARNING)
@@ -46,22 +45,6 @@ class keydefaultdict(defaultdict):
         else:
             ret = self[key] = self.default_factory(key)
             return ret
-
-
-def _startswith(mystr, prefixes=None, start_after=None):
-    """
-    Returns True if mystr starts with any of the given prefixes or is alphabetically above
-    start_after prefix. False otherwise.
-    """
-    if not prefixes and not start_after:
-        return True
-    prefixes = prefixes or []
-    for prefix in prefixes:
-        if mystr.startswith(prefix):
-            return True
-    if start_after and mystr > start_after:
-        return True
-    return False
 
 
 class MessageCache(object):
@@ -110,15 +93,6 @@ class MessageCache(object):
         return record
 
 
-# kafka-python 0.9.4 has not absolute offset seek
-# feature is added on current development branch
-def _seek_consumer(consumer, absolute_offset):
-    for partition in consumer.offsets:
-        consumer.offsets[partition] = absolute_offset
-    # apply original method reset/fetch
-    consumer.seek(0, 1)
-
-
 @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
 def get_latest_offsets(consumer, topic, partitions=None):
     partitions = partitions or consumer.offsets.keys()
@@ -165,8 +139,8 @@ class KafkaScanner(object):
     def __init__(self, brokers, topic, group=None, batchsize=DEFAULT_BATCH_SIZE, count=0,
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
-                        start_offsets=None, min_lower_offsets=None, key_prefixes=None,
-                        start_after=None, encoding='utf8', batch_autocommit=True):
+                        start_offsets=None, min_lower_offsets=None,
+                        encoding='utf8', batch_autocommit=True):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -183,8 +157,6 @@ class KafkaScanner(object):
         start_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
                         partition (except if keep_offsets is True)
         min_lower_offsets - Set limit lower offsets until which to scan.
-        key_prefixes - Only yield records with given key prefixes. Has precedence over start_after.
-        start_after - Only yield records with key prefixes after the given one.
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         batch_autocommit - If True, commit offsets each time a batch is finished
         """
@@ -219,8 +191,6 @@ class KafkaScanner(object):
         self._lower_offsets = None
         self._upper_offsets = None
         self._latest_offsets = start_offsets
-        self._key_prefixes = key_prefixes
-        self._start_after = start_after
         self.__last_message = None
 
         self._dupestempdir = None
@@ -274,76 +244,6 @@ class KafkaScanner(object):
         return offsets
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def seek_key_prefixes(self, partition, start_upper_offset, sample_ratio=100, max_jump=None):
-        """
-        This works under the assumption that key prefixes are clustered, so we can accelerate scanning for
-        getting particular range of keys without scanning the entire topic. It jumps self.__max_next_messages offsets and
-        after each jump takes a sample with size self.__max_next_messages / 1000 records to search for the given
-        prefixes.
-
-        prefixes - a list of key prefixes to seek to
-        partition - target partition
-        upper_offset - starting upper offset
-        sample_ratio - Ratio between offset jump step (self.__max_next_messages) and sample size.
-        max_jump - max offset jump to get next samples. If not given, will be used max_next_messages.
-
-        Seek speed up will be essentially sample_ratio (unless self.__max_next_messages is too small, minimal sample size is 10)
-        Consider that the bigger the speed up, more probabilities to loose smaller clusters, or some few records from the bigger
-        ones near its limits
-        """
-        def _sample_hit(sample):
-            for offset, key in sample:
-                if _startswith(key, self._key_prefixes, self._start_after):
-                    return offset, key
-            return None
-
-        max_jump = min(max_jump or self.__max_next_messages, self.__max_next_messages)
-        sample_size = max(_MIN_SEEK_SAMPLE_SIZE, max_jump // sample_ratio)
-        if not self._key_prefixes and not self._start_after:
-            return start_upper_offset
-        cluster_found = None
-        consumer = kafka.SimpleConsumer(
-                self._client, None,
-                self._topic, partitions=[partition],
-                fetch_size_bytes=FETCH_SIZE_BYTES,
-                buffer_size=FETCH_BUFFER_SIZE_BYTES,
-                max_buffer_size=MAX_FETCH_BUFFER_SIZE_BYTES,
-                auto_commit=False)
-        consumer.provide_partition_info()
-        upper_offset = start_upper_offset
-        self.processor.set_consumer(consumer)
-        scanner_sample_size = self.processor.processor_handlers.next_messages
-        self.processor.processor_handlers.set_next_messages(sample_size)
-        log.info("Start seeking offset: {%s: %s}" % (partition, upper_offset))
-
-        while cluster_found is None and upper_offset > self._min_lower_offsets[partition]:
-            lower_offset = upper_offset - max_jump
-            lower_offset = max(lower_offset, self._min_lower_offsets[partition])
-            _seek_consumer(consumer, lower_offset)
-            sample = self._get_sample(sample_size)
-
-            cluster_found = _sample_hit(sample)
-            if not cluster_found:
-                _seek_consumer(consumer, upper_offset - sample_size)
-                sample = self._get_sample(sample_size)
-                cluster_found = _sample_hit(sample)
-            if not cluster_found:
-                upper_offset = lower_offset
-
-        if cluster_found is not None:
-            offset, key = cluster_found
-            log.info("Position found: {%s: %s} (%s)" % (partition, offset, key))
-            log.info("Upper offset: {%s: %s}" % (partition, upper_offset))
-        consumer.stop()
-        consumer.client.close()
-        self.processor.set_consumer(self.consumer)
-        self.processor.processor_handlers.set_next_messages(scanner_sample_size)
-        return upper_offset
-
-    def _get_sample(self, sample_size):
-        return [(offset, key) for _, offset, key, _ in self.processor.process(sample_size)]
-
-    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_init_consumer(self):
         return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
 
@@ -383,8 +283,6 @@ class KafkaScanner(object):
         partition_batchsize = 0
         if self._upper_offsets:
             partition_batchsize = max(int(batchsize * self.__scan_excess), batchsize)
-            for p in self._upper_offsets:
-                self._upper_offsets[p] = self.seek_key_prefixes(p, self._upper_offsets[p], max_jump=partition_batchsize)
             self._lower_offsets = self._upper_offsets.copy()
             total_offsets_run = 0
             for p in sorted(self._upper_offsets.keys()):
@@ -444,8 +342,7 @@ class KafkaScanner(object):
                 record = {'_key': key, 'partition': partition, 'offset': offset, 'message': msg}
                 if offset < self._upper_offsets[partition]:
                     self.__scanned_count += 1
-                    if _startswith(key, self._key_prefixes, self._start_after) \
-                                and (key in messages or not self._record_is_dupe(partition, key)):
+                    if key in messages or not self._record_is_dupe(partition, key):
                         if self.must_delete_record(record):
                             self.__deleted_count += 1
                             if messages.get(key, None) is not None:
@@ -598,6 +495,8 @@ class KafkaScanner(object):
         return False
 
     def are_there_batch_messages_to_process(self, msgslen):
+        if msgslen > self.batchsize:
+            return False
         for partition, offset in self._upper_offsets.items():
             if self.consumer.offsets[partition] < offset:
                 return True
@@ -715,11 +614,6 @@ class KafkaScannerDirect(KafkaScannerSimple):
             if offset < self.latest_offsets[partition]:
                 return True
         return False
-
-    def are_there_batch_messages_to_process(self, msgslen):
-        if msgslen > self.batchsize:
-            return False
-        return super(KafkaScannerDirect, self).are_there_batch_messages_to_process(msgslen)
 
     def reset_offsets(self, offsets=None):
         commit_offsets = {p: 0 for p in self._partitions or self.latest_offsets.keys()}

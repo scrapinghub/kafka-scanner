@@ -222,37 +222,6 @@ class KafkaScannerTest(BaseScannerTest):
     def test_kafka_scan_lower_offsets_batches(self, client_mock, simple_consumer_mock):
         self.test_kafka_scan_lower_offsets(batchsize=200)
 
-    def test_kafka_scan_seek(self, client_mock, simple_consumer_mock, batchsize=10000):
-        msgs = []
-        for prefix in ['AD', 'CN', 'UK', 'ZA']:
-            msgs.extend([('%s%.3d' % (prefix, i), 'body %s %d' % (prefix, i)) for i in range(2000)])
-        samples = get_kafka_msg_samples(msgs)
-
-        client_mock.return_value = FakeClient(samples, 3, count_variations={0: 2, 1: 3, 2: 2})
-        scanner, _, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
-                batchsize=batchsize, max_next_messages=200, key_prefixes=['CN'])
-        self.assertEqual(len(messages), 2000)
-        self.assertTrue(scanner.scanned_count <= 4400)
-
-    def test_kafka_scan_seek_batches(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_seek(batchsize=200)
-
-    def test_kafka_scan_seek_start_after(self, client_mock, simple_consumer_mock,
-                    batchsize=10000, max_scanned_count=8000):
-        msgs = []
-        for prefix in ['AD', 'CN', 'UK', 'ZA']:
-            msgs.extend([('%s%.3d' % (prefix, i), 'body %s %d' % (prefix, i)) for i in range(2000)])
-        samples = get_kafka_msg_samples(msgs)
-
-        client_mock.return_value = FakeClient(samples, 3, count_variations={0: 2, 1: 3, 2: 2})
-        scanner, _, messages = self._get_scanner_messages(client_mock, simple_consumer_mock,
-                batchsize=batchsize, max_next_messages=200, start_after='CNff')
-        self.assertEqual(len(messages), 4000)
-        self.assertTrue(scanner.scanned_count <= max_scanned_count)
-
-    def test_kafka_scan_seek_start_after_batches(self, client_mock, simple_consumer_mock):
-        self.test_kafka_scan_seek_start_after(batchsize=200, max_scanned_count=4500)
-
     def test_encoding(self, client_mock, simple_consumer_mock):
         msgs = [('AD001', u'hol\xc3\xa1'.encode('latin1'))]
         samples = get_kafka_msg_samples(msgs)
