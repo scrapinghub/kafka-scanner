@@ -1,11 +1,23 @@
-import msgpack
 import zlib
 import time
 import logging
+import traceback
 
+import msgpack
+from retrying import retry
+
+from kafka.common import LeaderNotAvailableError
 
 log = logging.getLogger(__name__)
 
+# this exception is not correctly handled in kafka 0.9.5
+def retry_on_exception(exception):
+    print "Retried: {}".format(traceback.format_exc())
+    return isinstance(exception, LeaderNotAvailableError)
+
+@retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
+def _get_messages_from_consumer(consumer, max_next_messages):
+    return consumer.get_messages(max_next_messages)
 
 class MsgProcessorHandlers(object):
     def __init__(self, encoding=None):
@@ -33,7 +45,7 @@ class MsgProcessorHandlers(object):
             self.set_next_messages(min(1000, max_next_messages))
         self.set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
-        for partition, offmsg in self.consumer.get_messages(self.__next_messages):
+        for partition, offmsg in _get_messages_from_consumer(self.consumer, self.__next_messages):
             yield partition, offmsg.offset, offmsg.message.key, offmsg.message.value
         newmark = time.time()
         if newmark - mark > 30:
