@@ -335,7 +335,7 @@ class KafkaScanner(object):
 
         max_next_messages = min(partition_batchsize, self.__max_next_messages)
         messages = MessageCache(self._dupes is not None)
-
+        read_batch_count = 0
         while self.enabled and self.are_there_batch_messages_to_process(len(messages)):
             for partition, offset, key, msg in self.processor.process(max_next_messages):
                 self.__real_scanned_count += 1
@@ -357,6 +357,10 @@ class KafkaScanner(object):
                         else:
                             self.__dupes_count += 1
                         messages.append(record)
+                        read_batch_count += 1
+                        if len(messages) == max_next_messages:
+                            yield messages.values()
+                            messages = MessageCache(self._dupes is not None)
 
                 if self.__real_scanned_count % self.__logcount == 0:
                     self.stats_logger.log_stats('Last key: {} '.format(key))
@@ -365,9 +369,9 @@ class KafkaScanner(object):
                 if self.__issued_count > 0 and self.__issued_count == self._count:
                     self.enabled = False
                     break
-        self.__scan_excess = partition_batchsize / len(messages) if len(messages) > 0 else self.__scan_excess * 2
-
-        return messages.values()
+        if len(messages):
+            yield messages.values()
+        self.__scan_excess = partition_batchsize / read_batch_count if read_batch_count > 0 else self.__scan_excess * 2
 
     def _record_is_dupe(self, partition, key):
         if self._dupes is None:
@@ -378,13 +382,14 @@ class KafkaScanner(object):
         self.__dupes_count += 1
         return True
 
-    def _filter_deleted_records(self, records):
+    def _filter_deleted_records(self, batches):
         """
         Filter out deleted records
         """
-        for record in records:
-            if not self.must_delete_record(record):
-                yield record
+        for batch in batches:
+            for record in batch:
+                if not self.must_delete_record(record):
+                    yield record
 
     def _process_offsetmsgs(self, omsgs):
         for omsg in omsgs:
@@ -495,8 +500,6 @@ class KafkaScanner(object):
         return False
 
     def are_there_batch_messages_to_process(self, msgslen):
-        if msgslen > self.batchsize:
-            return False
         for partition, offset in self._upper_offsets.items():
             if self.consumer.offsets[partition] < offset:
                 return True
@@ -614,6 +617,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
             if offset < self.latest_offsets[partition]:
                 return True
         return False
+
+    def are_there_batch_messages_to_process(self, msgslen):
+        if msgslen > self.batchsize:
+            return False
+        return super(KafkaScannerDirect, self).are_there_batch_messages_to_process(msgslen)
 
     def reset_offsets(self, offsets=None):
         commit_offsets = {p: 0 for p in self._partitions or self.latest_offsets.keys()}
