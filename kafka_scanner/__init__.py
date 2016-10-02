@@ -6,15 +6,15 @@ import shutil
 import tempfile
 import atexit
 import logging
+import traceback
 
-from collections import Iterable, defaultdict, OrderedDict
+from collections import Iterable, defaultdict, OrderedDict, namedtuple
 
 from retrying import retry
 import kafka
 from sqlitedict import SqliteDict
 
 from .msg_processor import MsgProcessor
-from .utils import retry_on_exception
 
 __version__ = '0.1.0'
 
@@ -93,22 +93,6 @@ class MessageCache(object):
         return record
 
 
-@retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-def get_latest_offsets(consumer, topic, partitions=None):
-    partitions = partitions or consumer.offsets.keys()
-    result = {}
-    reqs = []
-
-    for partition in partitions:
-        reqs.append(kafka.common.OffsetRequest(topic, partition, -1, 1))
-
-    resps = consumer.client.send_offset_request(reqs)
-    for resp in resps:
-        result[resp.partition] = resp.offsets[0]
-
-    return result
-
-
 class StatsLogger(object):
     def __init__(self):
         self._stats_logline = ''
@@ -132,7 +116,51 @@ class StatsLogger(object):
     def close(self):
         self.closed = True
 
-_client = None
+
+ClientBrokers = namedtuple('ClientBrokers', ['client', 'brokers'])
+
+_clientbrokers = None
+
+def _get_client(brokers=None, force_newconn=False):
+    global _clientbrokers
+    if _clientbrokers is not None:
+        brokers = brokers or _clientbrokers.brokers
+    assert isinstance(brokers, Iterable)
+    if force_newconn or _clientbrokers is None:
+        _clientbrokers = ClientBrokers(kafka.KafkaClient(map(bytes, brokers)), brokers)
+    return _clientbrokers.client
+
+
+def retry_on_exception(exception):
+    print "Retried: {}".format(traceback.format_exc())
+    if not isinstance(exception, KeyboardInterrupt):
+        # some kinds of issues solve after reconnection
+        _get_client(force_newconn=True)
+        return True
+    return False
+
+
+@retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
+def _check_topic_exists(topic):
+    if topic not in _clientbrokers.client.topics:
+        raise ValueError("Topic not found: %s" % topic)
+
+
+@retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
+def get_latest_offsets(consumer, topic, partitions=None):
+    partitions = partitions or consumer.offsets.keys()
+    result = {}
+    reqs = []
+
+    for partition in partitions:
+        reqs.append(kafka.common.OffsetRequest(topic, partition, -1, 1))
+
+    resps = consumer.client.send_offset_request(reqs)
+    for resp in resps:
+        result[resp.partition] = resp.offsets[0]
+
+    return result
+
 
 class KafkaScanner(object):
 
@@ -160,12 +188,9 @@ class KafkaScanner(object):
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         batch_autocommit - If True, commit offsets each time a batch is finished
         """
-        assert isinstance(brokers, Iterable)
-        global _client
-        self._client = _client = _client or kafka.KafkaClient(map(bytes, brokers))
+        self._client = _get_client(brokers)
+        _check_topic_exists(topic)
 
-        if topic not in self._client.topics:
-            raise ValueError("Topic not found: %s" % topic)
         self._topic = bytes(topic)
         self._group = None
         self._keep_offsets = False
