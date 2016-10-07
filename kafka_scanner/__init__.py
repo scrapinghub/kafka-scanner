@@ -650,7 +650,5 @@ class KafkaScannerDirect(KafkaScannerSimple):
         return super(KafkaScannerDirect, self).are_there_batch_messages_to_process(msgslen)
 
     def reset_offsets(self, offsets=None):
-        commit_offsets = {p: 0 for p in self._partitions or self.latest_offsets.keys()}
-        offsets = offsets or {}
-        commit_offsets.update(offsets)
+        commit_offsets = offsets or {p: 0 for p in self._partitions or self.latest_offsets.keys()}
         self._commit_offsets(commit_offsets)
