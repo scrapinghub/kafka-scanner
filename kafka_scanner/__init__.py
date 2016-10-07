@@ -385,7 +385,6 @@ class KafkaScanner(object):
                         read_batch_count += 1
                         if len(messages) == max_next_messages:
                             yield messages.values()
-                            log.info("Last offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
                             messages = MessageCache(self._dupes is not None)
 
                 if self.__real_scanned_count % self.__logcount == 0:
@@ -397,8 +396,8 @@ class KafkaScanner(object):
                     break
         if len(messages):
             yield messages.values()
-            log.info("Last offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
         self.__scan_excess = partition_batchsize / read_batch_count if read_batch_count > 0 else self.__scan_excess * 2
+        log.info("Last offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
 
     def _record_is_dupe(self, partition, key):
         if self._dupes is None:
