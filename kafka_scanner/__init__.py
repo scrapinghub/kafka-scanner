@@ -16,7 +16,7 @@ from sqlitedict import SqliteDict
 
 from .msg_processor import MsgProcessor
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 DEFAULT_BATCH_SIZE = 10000
 FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
