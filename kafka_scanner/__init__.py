@@ -604,15 +604,15 @@ class KafkaScannerDirect(KafkaScannerSimple):
         if not self._group or not self._keep_offsets or self._lower_offsets is not None:
             if self._lower_offsets is None:
                 self._lower_offsets = {partition: 0 for partition in self.init_consumer.offsets}
-            for p, o in self._lower_offsets.items():
-                if self._upper_offsets[p] < o:
-                    self._lower_offsets[p] = 0
-                    log.warning('Set lower offset for partition %d to 0', p)
-            self.init_consumer.offsets.update(self._lower_offsets)
-            self.init_consumer.count_since_commit += 1
-            self.init_consumer.commit()
         else:
             self._lower_offsets = self.init_consumer.offsets.copy()
+        for p, o in self._lower_offsets.items():
+            if self._upper_offsets[p] < o:
+                self._lower_offsets[p] = 0
+                log.warning('Set lower offset for partition %d to 0', p)
+        self.init_consumer.offsets.update(self._lower_offsets)
+        self.init_consumer.count_since_commit += 1
+        self.init_consumer.commit()
         self._create_scan_consumer()
         log.info("Initial offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
         log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
