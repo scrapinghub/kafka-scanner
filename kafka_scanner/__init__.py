@@ -153,7 +153,7 @@ def get_latest_offsets(consumer, topic, partitions=None):
     reqs = []
 
     for partition in partitions:
-        reqs.append(kafka.common.OffsetRequest(topic, partition, -1, 1))
+        reqs.append(kafka.common.OffsetRequestPayload(topic, partition, -1, 1))
 
     resps = consumer.client.send_offset_request(reqs)
     for resp in resps:
