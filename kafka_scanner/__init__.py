@@ -607,6 +607,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
             for p, o in self._lower_offsets.items():
                 if self._upper_offsets[p] < o:
                     self._lower_offsets[p] = 0
+                    log.warning('Set lower offset for partition %d to 0', p)
             self.init_consumer.offsets.update(self._lower_offsets)
             self.init_consumer.count_since_commit += 1
             self.init_consumer.commit()
