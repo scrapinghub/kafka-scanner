@@ -146,22 +146,6 @@ def _check_topic_exists(topic):
         raise ValueError("Topic not found: %s" % topic)
 
 
-@retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-def get_latest_offsets(consumer, topic, partitions=None):
-    partitions = partitions or consumer.offsets.keys()
-    result = {}
-    reqs = []
-
-    for partition in partitions:
-        reqs.append(kafka.common.OffsetRequestPayload(topic, partition, -1, 1))
-
-    resps = consumer.client.send_offset_request(reqs)
-    for resp in resps:
-        result[resp.partition] = resp.offsets[0]
-
-    return result
-
-
 class KafkaScanner(object):
 
     def __init__(self, brokers, topic, group=None, batchsize=DEFAULT_BATCH_SIZE, count=0,
@@ -189,6 +173,7 @@ class KafkaScanner(object):
         batch_autocommit - If True, commit offsets each time a batch is finished
         """
         self._client = _get_client(brokers)
+        self._brokers = brokers
         _check_topic_exists(topic)
 
         self._topic = bytes(topic)
@@ -551,9 +536,13 @@ class KafkaScanner(object):
         return self.__dupes_count
 
     @property
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def latest_offsets(self):
         if not self._latest_offsets:
-            self._latest_offsets = get_latest_offsets(self.init_consumer, self._topic, self._partitions)
+            consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None)
+            partitions = [kafka.TopicPartition(self._topic, p) for p in self._partitions]
+            consumer.assign(partitions)
+            self._latest_offsets = {p.partition: consumer.position(p) for p in partitions}
         return self._latest_offsets
 
     @property

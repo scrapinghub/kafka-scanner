@@ -114,6 +114,23 @@ class FakeConsumer(object):
 LatestOffsetsResponse = namedtuple('LatestOffsetsResponse', ['partition', 'offsets'])
 
 
+class FakeKafkaConsumer(FakeConsumer):
+    def __init__(self, client, mock=None, group_id='default', fail_on_offset=None):
+        self._client = client
+        self.config = {
+            'group_id': group_id,
+        }
+        super(FakeKafkaConsumer, self).__init__(client, mock, fail_on_offset)
+
+    def assign(self, topic_partitions):
+        if self.config['group_id'] is None:
+            for p in topic_partitions:
+                self.offsets[p.partition] = self._client.latest_offsets[p.partition]
+
+    def position(self, topic_partition):
+        return self.offsets[topic_partition.partition]
+
+
 class FakeClient(object):
     def __init__(self, data, num_partitions=1, max_partition_messages=None, count_variations=None):
         self.topic_partitions = {'test-topic': {i: None for i in range(num_partitions)}}
@@ -161,4 +178,9 @@ class FakeClient(object):
 def create_fake_consumer(client_mock, consumer_mock, fail_on_offset=None):
     def _side_effect(*args, **kwargs):
         return FakeConsumer(client_mock.return_value, consumer_mock, fail_on_offset)
+    return _side_effect
+
+def create_fake_kafka_consumer(client_mock, consumer_mock, group_id, fail_on_offset=None):
+    def _side_effect(*args, **kwargs):
+        return FakeKafkaConsumer(client_mock.return_value, consumer_mock, group_id, fail_on_offset)
     return _side_effect
