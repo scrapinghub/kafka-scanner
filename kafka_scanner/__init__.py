@@ -194,7 +194,6 @@ class KafkaScanner(object):
 
         self.__logcount = logcount
         self.consumer = None
-        self._init_consumer = None
         self.processor = None
         self.processor_handlers = None
         self._min_lower_offsets = defaultdict(int, min_lower_offsets or {})
@@ -245,23 +244,6 @@ class KafkaScanner(object):
             self.processor = MsgProcessor(handlers_list, encoding=self.__encoding)
         self._create_scan_consumer()
 
-    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def _create_init_consumer(self):
-        return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
-
-    @property
-    def init_consumer(self):
-        if self._init_consumer is None:
-            self._init_consumer = self._create_init_consumer()
-        return self._init_consumer
-
-    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def _commit_offsets(self, offsets):
-        log.info('Commiting offsets for group %s (topic %s): %s', self._group, self._topic, offsets)
-        self.init_consumer.offsets.update(offsets)
-        self.init_consumer.count_since_commit += 1
-        self.init_consumer.commit()
-
     def _update_offsets(self, offsets):
         for p, offset in offsets.items():
             self.consumer.seek(offset, partition=p)
@@ -269,9 +251,7 @@ class KafkaScanner(object):
     def _init_offsets(self, batchsize):
         upper_offsets = previous_lower_offsets = self._lower_offsets
         if not upper_offsets:
-            upper_offsets = {p: o for p, o in self.init_consumer.offsets.items()}
-            if not self._group or not self._keep_offsets:
-                upper_offsets = self.latest_offsets
+            upper_offsets = self.latest_offsets
         self._upper_offsets = {p: o for p, o in upper_offsets.items() if o > self._min_lower_offsets[p]}
 
         # remove db dupes not used anymore
@@ -463,14 +443,15 @@ class KafkaScanner(object):
             if self.consumer is not None:
                 self.consumer.stop()
                 self.consumer.client.close()
-            if self._init_consumer is not None:
-                self._init_consumer.stop()
-                self._init_consumer.client.close()
             if self._dupes is not None:
                 for db in self._dupes.values():
                     db.close()
                 shutil.rmtree(self._dupestempdir)
             self._client.close()
+
+    @property
+    def is_closed(self):
+        return self.__closed
 
     def commit_final_offsets(self):
         pass
@@ -582,6 +563,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit)
         self._lower_offsets = start_offsets
         self._api_version = api_version
+        self._init_consumer = None
+
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
+    def _create_init_consumer(self):
+        return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
 
     def init_scanner(self):
         super(KafkaScannerDirect, self).init_scanner()
@@ -649,3 +635,22 @@ class KafkaScannerDirect(KafkaScannerSimple):
     def reset_offsets(self, offsets=None):
         commit_offsets = offsets or {p: 0 for p in self._partitions or self.latest_offsets.keys()}
         self._commit_offsets(commit_offsets)
+
+    @property
+    def init_consumer(self):
+        if self._init_consumer is None:
+            self._init_consumer = self._create_init_consumer()
+        return self._init_consumer
+
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
+    def _commit_offsets(self, offsets):
+        log.info('Commiting offsets for group %s (topic %s): %s', self._group, self._topic, offsets)
+        self.init_consumer.offsets.update(offsets)
+        self.init_consumer.count_since_commit += 1
+        self.init_consumer.commit()
+
+    def close(self):
+        if not self.is_closed and self._init_consumer is not None:
+            self._init_consumer.stop()
+            self._init_consumer.client.close()
+        super(KafkaScannerDirect, self).close()
