@@ -246,14 +246,6 @@ class KafkaScanner(object):
         self._create_scan_consumer()
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-    def get_commited_offsets(self):
-        consumer = kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
-        offsets = consumer.offsets
-        consumer.stop()
-        consumer.client.close()
-        return offsets
-
-    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_init_consumer(self):
         return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
 
@@ -577,15 +569,19 @@ class KafkaScannerDirect(KafkaScannerSimple):
     with few extra feature support)
 
     start_offsets - allow to set start offsets dict.
+    api_version - see kafka.consumer.group.KafkaConsumer docstring. Default here is (0,8,1) for
+                  compatibility with previous scanner (commited offsets saved on zookeeper server)
 
     The rest of parameters has the same functionality as parent class
     """
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=False,
-            partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True):
+            partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
+            api_version=(0,8,1)):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
                     count=0, batchcount=batchcount, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit)
         self._lower_offsets = start_offsets
+        self._api_version = api_version
 
     def init_scanner(self):
         super(KafkaScannerDirect, self).init_scanner()
@@ -640,6 +636,15 @@ class KafkaScannerDirect(KafkaScannerSimple):
         if msgslen > self.batchsize:
             return False
         return super(KafkaScannerDirect, self).are_there_batch_messages_to_process(msgslen)
+
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
+    def get_committed_offsets(self):
+        consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=self._group, api_version=self._api_version)
+        partitions = [kafka.TopicPartition(self._topic, p) for p in self._partitions]
+        consumer.assign(partitions)
+        offsets = {p.partition: consumer.committed(p) or 0 for p in partitions}
+        consumer.close()
+        return offsets
 
     def reset_offsets(self, offsets=None):
         commit_offsets = offsets or {p: 0 for p in self._partitions or self.latest_offsets.keys()}
