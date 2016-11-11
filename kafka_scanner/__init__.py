@@ -132,18 +132,13 @@ def _get_client(brokers=None, force_newconn=False):
 
 
 def retry_on_exception(exception):
-    print "Retried: {}".format(traceback.format_exc())
+    log.error("Retried: {}".format(traceback.format_exc()))
     if not isinstance(exception, KeyboardInterrupt):
         # some kinds of issues solve after reconnection
-        _get_client(force_newconn=True)
+        # _get_client(force_newconn=True)
         return True
     return False
 
-
-@retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
-def _check_topic_exists(topic):
-    if topic not in _clientbrokers.client.topics:
-        raise ValueError("Topic not found: %s" % topic)
 
 
 class KafkaScanner(object):
@@ -172,15 +167,17 @@ class KafkaScanner(object):
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         batch_autocommit - If True, commit offsets each time a batch is finished
         """
-        self._client = _get_client(brokers)
-        self._brokers = brokers
-        _check_topic_exists(topic)
+        # for inverse scanning api version doesn't matter
+        self._api_version = None
 
-        self._topic = bytes(topic)
+        self._brokers = brokers
+        self._topic = topic
+        self._check_topic_exists()
+
         self._group = None
         self._keep_offsets = False
         self._set_consumer_group(group, keep_offsets)
-        self._partitions = partitions
+        self._partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]
         self.enabled = False
         self.__real_scanned_count = 0
         self.__scanned_count = 0
@@ -230,6 +227,14 @@ class KafkaScanner(object):
 
         self.__iter_batches = None
 
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
+    def _check_topic_exists(self):
+        consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None)
+        topics = consumer.topics()
+        consumer.close()
+        if self.topic not in topics:
+            raise ValueError("Topic not found: %s" % topic)
+
     def _make_dupe_dict(self, partition):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
 
@@ -246,9 +251,12 @@ class KafkaScanner(object):
 
     def _update_offsets(self, offsets):
         for p, offset in offsets.items():
-            self.consumer.seek(offset, partition=p)
+            self.consumer.seek(kafka.TopicPartition(self._topic, p), offset)
 
     def _init_offsets(self, batchsize):
+        """
+        Compute new initial and target offsets and do other maintenance tasks
+        """
         upper_offsets = previous_lower_offsets = self._lower_offsets
         if not upper_offsets:
             upper_offsets = self.latest_offsets
@@ -285,28 +293,32 @@ class KafkaScanner(object):
 
             # consumer must restart from newly computed lower offsets
             self._update_offsets(self._lower_offsets)
-        log.info("Initial offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
+        log.info("Initial offsets for topic %s: %s", self._topic, repr(self._get_position()))
         log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
 
         return batchsize
+
+    def _get_position(self):
+        offsets = {}
+        for partition in self._partitions:
+            offsets[partition.partition] = self.consumer.position(partition)
+        return offsets
 
     def _init_batch(self, batchsize):
         return self._init_offsets(batchsize)
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_scan_consumer(self, partitions=None):
-        self.consumer = kafka.SimpleConsumer(
-            client=self._client,
-            partitions=partitions or self._partitions,
-            auto_commit=False,
-            group=self._group,
-            topic=self._topic,
-            fetch_size_bytes=FETCH_SIZE_BYTES,
-            buffer_size=FETCH_BUFFER_SIZE_BYTES,
-            max_buffer_size=MAX_FETCH_BUFFER_SIZE_BYTES,
-            iter_timeout=60,
+        self.consumer = kafka.KafkaConsumer(
+            bootstrap_servers=self._brokers,
+            group_id=self._group,
+            enable_auto_commit=False,
+            consumer_timeout_ms=100,
+            api_version=self._api_version,
         )
-        self.consumer.provide_partition_info()
+        partitions = partitions or []
+        partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]
+        self.consumer.assign(partitions or self._partitions)
         self.processor.set_consumer(self.consumer)
 
     def _scan_topic_batch(self, partition_batchsize):
@@ -354,7 +366,7 @@ class KafkaScanner(object):
         if len(messages):
             yield messages.values()
         self.__scan_excess = partition_batchsize / read_batch_count if read_batch_count > 0 else self.__scan_excess * 2
-        log.info("Last offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
+        log.info("Last offsets for topic %s: %s", self._topic, repr(self._get_position()))
 
     def _record_is_dupe(self, partition, key):
         if self._dupes is None:
@@ -441,13 +453,11 @@ class KafkaScanner(object):
             self.__closed = True
             self.stats_logger.close()
             if self.consumer is not None:
-                self.consumer.stop()
-                self.consumer.client.close()
+                self.consumer.close()
             if self._dupes is not None:
                 for db in self._dupes.values():
                     db.close()
                 shutil.rmtree(self._dupestempdir)
-            self._client.close()
 
     @property
     def is_closed(self):
@@ -484,7 +494,7 @@ class KafkaScanner(object):
 
     def are_there_batch_messages_to_process(self, msgslen):
         for partition, offset in self._upper_offsets.items():
-            if self.consumer.offsets[partition] < offset:
+            if self._get_position()[partition] < offset:
                 return True
         return False
 
@@ -513,14 +523,15 @@ class KafkaScanner(object):
     def latest_offsets(self):
         if not self._latest_offsets:
             consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None)
-            partitions = [kafka.TopicPartition(self._topic, p) for p in self._partitions]
+            partitions = [kafka.TopicPartition(self._topic, p.partition) for p in self._partitions]
             consumer.assign(partitions)
             self._latest_offsets = {p.partition: consumer.position(p) for p in partitions}
+            consumer.close()
         return self._latest_offsets
 
     @property
     def partitions(self):
-        return self._partitions
+        return [p.partition for p in self._partitions]
 
     @property
     def topic(self):
@@ -546,7 +557,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
     Scanner in direct sense. Dedupe is not supported in order to conserve
     logic of direct scanning. Also, delete records are issued.
 
-    This is essentially a wrapper around SimpleConsumer for supporting same api than other scanners,
+    This is essentially a wrapper around KafkaConsumer for supporting same api than other scanner,
     with few extra feature support)
 
     start_offsets - allow to set start offsets dict.
@@ -564,10 +575,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
         self._lower_offsets = start_offsets
         self._api_version = api_version
         self._init_consumer = None
+        self._client = _get_client(self._brokers)
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_init_consumer(self):
-        return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self._partitions)
+        return kafka.SimpleConsumer(self._client, self._group, self._topic, partitions=self.partitions)
 
     def init_scanner(self):
         super(KafkaScannerDirect, self).init_scanner()
@@ -585,18 +597,18 @@ class KafkaScannerDirect(KafkaScannerSimple):
         self.init_consumer.count_since_commit += 1
         self.init_consumer.commit()
         self._create_scan_consumer()
-        log.info("Initial offsets for topic %s: %s", self._topic, repr(self.consumer.offsets))
+        log.info("Initial offsets for topic %s: %s", self._topic, repr(self._get_position()))
         log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
 
     def _set_consumer_group(self, group, keep_offsets):
         if isinstance(group, basestring):
-            self._group = bytes(group)
+            self._group = group
         if keep_offsets:
             assert self._group, 'keep_offsets option needs a group name'
         self._keep_offsets = keep_offsets
 
     def _init_offsets(self, batchsize):
-        self._lower_offsets = self.consumer.offsets.copy()
+        self._lower_offsets = self._get_position().copy()
         return batchsize // len(self._upper_offsets) or 1
 
     def _init_batch(self, batchsize):
@@ -609,11 +621,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
             self._commit_offsets(commit_offsets)
 
     def commit_final_offsets(self):
-        commit_offsets = self.consumer.offsets
+        commit_offsets = self._get_position()
         self._commit_offsets(commit_offsets)
 
     def are_there_messages_to_process(self):
-        for partition, offset in self.consumer.offsets.items():
+        for partition, offset in self._get_position().items():
             if offset < self.latest_offsets[partition]:
                 return True
         return False
@@ -626,14 +638,13 @@ class KafkaScannerDirect(KafkaScannerSimple):
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def get_committed_offsets(self):
         consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=self._group, api_version=self._api_version)
-        partitions = [kafka.TopicPartition(self._topic, p) for p in self._partitions]
         consumer.assign(partitions)
-        offsets = {p.partition: consumer.committed(p) or 0 for p in partitions}
+        offsets = {p.partition: consumer.committed(p) or 0 for p in self._partitions}
         consumer.close()
         return offsets
 
     def reset_offsets(self, offsets=None):
-        commit_offsets = offsets or {p: 0 for p in self._partitions or self.latest_offsets.keys()}
+        commit_offsets = offsets or {p: 0 for p in self.partitions or self.latest_offsets.keys()}
         self._commit_offsets(commit_offsets)
 
     @property

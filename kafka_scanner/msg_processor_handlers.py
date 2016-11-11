@@ -17,7 +17,12 @@ def retry_on_exception(exception):
 
 @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
 def _get_messages_from_consumer(consumer, max_next_messages):
-    return consumer.get_messages(max_next_messages)
+    count = 0
+    for m in consumer:
+        yield m
+        count += 1
+        if count == max_next_messages:
+            break
 
 class MsgProcessorHandlers(object):
     def __init__(self, encoding=None):
@@ -45,8 +50,8 @@ class MsgProcessorHandlers(object):
             self.set_next_messages(min(1000, max_next_messages))
         self.set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
-        for partition, offmsg in _get_messages_from_consumer(self.consumer, self.__next_messages):
-            yield partition, offmsg.offset, offmsg.message.key, offmsg.message.value
+        for record in _get_messages_from_consumer(self.consumer, self.__next_messages):
+            yield record.partition, record.offset, record.key, record.value
         newmark = time.time()
         if newmark - mark > 30:
             self.set_next_messages(self.__next_messages / 2 or 1)
