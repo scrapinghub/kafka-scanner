@@ -17,7 +17,8 @@ class BaseScannerTest(unittest.TestCase):
         simple_consumer_mock.side_effect = create_fake_consumer(client_mock, simple_consumer_mock, fail_on_offset)
         kafka_consumer_mock.side_effect = create_fake_kafka_consumer(client_mock, kafka_consumer_mock, None)
         topic = 'test-topic'
-        scanner = self.scannerclass(['kafka:9092'], topic, 'test',
+        group = scanner_kwargs.pop('group', None)
+        scanner = self.scannerclass(['kafka:9092'], topic, group,
                 partitions=client_mock.return_value.topic_partitions[topic].keys(),
                   **scanner_kwargs)
         batches = scanner.scan_topic_batches()
@@ -288,7 +289,7 @@ class KafkaScannerDirectTest(BaseScannerTest):
     def test_kafka_scan_batch(self, client_mock, kafka_consumer_mock, simple_consumer_mock):
         client_mock.return_value = FakeClient(self.samples, 3, count_variations={0: 2, 1: 3, 2: 2})
         _, number_of_batches, messages = self._get_scanner_messages(client_mock, kafka_consumer_mock, simple_consumer_mock,
-                batchsize=200)
+                batchsize=200, group='test_group')
         msgsdict = {m['_key']: m.get('body', None) for m in messages}
         self.assertEqual(len(messages), 1100)
         self.assertEqual(len(set(msgsdict)), 1000)
@@ -297,7 +298,7 @@ class KafkaScannerDirectTest(BaseScannerTest):
     def test_kafka_scan_batches_batchcount(self, client_mock, kafka_consumer_mock, simple_consumer_mock, batchsize=100, batchcount=3):
         client_mock.return_value = FakeClient(self.samples, 3, count_variations={0: 2, 1: 3, 2: 2})
         _, number_of_batches, messages = self._get_scanner_messages(client_mock, kafka_consumer_mock, simple_consumer_mock,
-                batchsize=batchsize, batchcount=batchcount)
+                batchsize=batchsize, batchcount=batchcount, group='test_group')
         msgsdict = {m['_key']: m['body'] for m in messages}
         self.assertTrue('AD000' in msgsdict)
         self.assertEqual(number_of_batches, 3)
@@ -307,7 +308,7 @@ class KafkaScannerDirectTest(BaseScannerTest):
     def test_kafka_starting_offsets(self, client_mock, kafka_consumer_mock, simple_consumer_mock):
         client_mock.return_value = FakeClient(self.samples, 3, count_variations={0: 2, 1: 3, 2: 2})
         _, number_of_batches, messages = self._get_scanner_messages(client_mock, kafka_consumer_mock, simple_consumer_mock,
-                batchsize=200, start_offsets={0: 150, 1: 150, 2: 200})
+                batchsize=200, start_offsets={0: 150, 1: 150, 2: 200}, group='test_group')
         self.assertEqual(len(messages), 600)
         self.assertEqual(number_of_batches, 3)
 
@@ -328,7 +329,7 @@ class KafkaScannerDirectResumeTest(BaseScannerTest):
         sum_msgkeys = 0
         for batchcount in (2, 2, 4, 2):
             _, number_of_batches, messages = self._get_scanner_messages(client_mock, kafka_consumer_mock, simple_consumer_mock,
-                        keep_offsets=True, batchsize=batchsize, batchcount=batchcount)
+                        keep_offsets=True, batchsize=batchsize, batchcount=batchcount, group='test_group')
             msgkeys = set([m['_key'] for m in messages])
             sum_msgkeys += len(msgkeys)
             all_msgkeys.update(msgkeys)
@@ -345,7 +346,8 @@ class KafkaScannerDirectResumeTest(BaseScannerTest):
         sum_msgkeys = 0
         for batchcount, fail_on_offset in ((5, 450), (7, None)):
             scanner, number_of_batches, messages = self._get_scanner_messages(client_mock, kafka_consumer_mock, simple_consumer_mock,
-                        keep_offsets=True, batchsize=batchsize, batchcount=batchcount, max_next_messages=100, fail_on_offset=fail_on_offset)
+                        keep_offsets=True, batchsize=batchsize, batchcount=batchcount, max_next_messages=100, fail_on_offset=fail_on_offset,
+                        group='test_group')
             msgkeys = set([m['_key'] for m in messages])
             sum_msgkeys += len(msgkeys)
             all_msgkeys.update(msgkeys)

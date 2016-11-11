@@ -227,12 +227,16 @@ class KafkaScanner(object):
 
         self.__iter_batches = None
 
-    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
-    def _check_topic_exists(self):
+    @property
+    #@retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
+    def topics(self):
         consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None)
         topics = consumer.topics()
         consumer.close()
-        if self.topic not in topics:
+        return topics
+
+    def _check_topic_exists(self):
+        if self.topic not in self.topics:
             raise ValueError("Topic not found: %s" % topic)
 
     def _make_dupe_dict(self, partition):
