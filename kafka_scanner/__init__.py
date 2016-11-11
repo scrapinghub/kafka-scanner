@@ -293,14 +293,14 @@ class KafkaScanner(object):
 
             # consumer must restart from newly computed lower offsets
             self._update_offsets(self._lower_offsets)
-        log.info("Initial offsets for topic %s: %s", self._topic, repr(self._get_position()))
+        log.info("Initial offsets for topic %s: %s", self._topic, repr(self._lower_offsets))
         log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
 
         return batchsize
 
     def _get_position(self):
         offsets = {}
-        for partition in self._partitions:
+        for partition in self.consumer.assignment:
             offsets[partition.partition] = self.consumer.position(partition)
         return offsets
 

@@ -10,8 +10,8 @@ from itertools import cycle
 import msgpack
 
 
-OffsetAndMessage = namedtuple("OffsetAndMessage", ["offset", "message"])
-Message = namedtuple("Message", ["magic", "attributes", "key", "value"])
+Message = namedtuple("Message", ["key", "value"])
+ConsumerRecord = namedtuple("ConsumerRecord", ["partition", "offset", "key", "value"])
 
 
 def get_kafka_msg_samples(msgs=None, fetch_count=0):
@@ -20,7 +20,7 @@ def get_kafka_msg_samples(msgs=None, fetch_count=0):
                 ('AD34567', "second my-body"),
                 ('AD67890', 'third my-body')]
     fetch_count = fetch_count or len(msgs)
-    return [Message(0, 0, key,
+    return [Message(key,
          zlib.compress(msgpack.packb({'body': body})) if body else None)
          for key, body in msgs[:fetch_count]]
 
@@ -30,49 +30,37 @@ class FakeConsumer(object):
         self.client = client
         self.count_since_commit = 0
         self._offsets = None
-        self.msg_queue = []
+        self.record_queue = []
         self.mock = mock
-        self.partition_info = False
         self.fail_on_offset = fail_on_offset
 
     def provide_partition_info(self):
         self.partition_info = True
 
-    def get_messages(self, count=1, *args, **kwargs):
+    def get_records(self, count=1, *args, **kwargs):
         purged_partitions = []
-        while self.msg_queue:
-            p, omsg = self.msg_queue[0]
-            if p in purged_partitions:
+        while self.record_queue:
+            record = self.record_queue[0]
+            if record.partition in purged_partitions:
                 break
-            if omsg.offset != self.offsets[p]:
-                self.msg_queue.pop(0)
+            if record.offset != self.offsets[record.partition]:
+                self.record_queue.pop(0)
             else:
-                purged_partitions.append(p)
-        messages = []
+                purged_partitions.append(record.partition)
+        records = []
         while count:
-            if not self.msg_queue:
-                for pm in self.client.get_msg_generator(count, self.offsets):
-                    self.msg_queue.append(pm)
-            if self.msg_queue:
-                partition, omsg = self.msg_queue.pop(0)
-                assert (self.fail_on_offset != omsg.offset), 'Failed on offset {}'.format(omsg.offset)
-                self.offsets[partition] = omsg.offset + 1
-                _msg = (partition, omsg) if self.partition_info else omsg
-                messages.append(_msg)
+            if not self.record_queue:
+                for record in self.client.get_msg_generator(count, self.offsets):
+                    self.record_queue.append(record)
+            if self.record_queue:
+                record = self.record_queue.pop(0)
+                assert (self.fail_on_offset != record.offset), 'Failed on offset {}'.format(record.offset)
+                self.offsets[record.partition] = record.offset + 1
+                records.append(record)
                 count -= 1
             else:
                 break
-        self.count_since_commit += len(messages)
-        self._auto_commit()
-        return messages
-
-    def _auto_commit(self):
-        # exactly as in kafka.consumer.base.Consumer
-        # Check if we are supposed to do an auto-commit
-        if not self.auto_commit or self.auto_commit_every_n is None:
-            return
-        if self.count_since_commit >= self.auto_commit_every_n:
-            self.commit()
+        return records
 
     def seek(self, offset, whence=None, partition=None):
         partitions = self.offsets.keys() if partition is None else [partition]
@@ -103,13 +91,6 @@ class FakeConsumer(object):
     def _get_init_params(self, keyword, default=None):
         return self.mock.call_args[1].get(keyword, default)
 
-    @property
-    def auto_commit(self):
-        return self._get_init_params('auto_commit', True)
-
-    @property
-    def auto_commit_every_n(self):
-        return self._get_init_params('auto_commit_every_n', 100)
 
 LatestOffsetsResponse = namedtuple('LatestOffsetsResponse', ['partition', 'offsets'])
 
@@ -117,18 +98,54 @@ LatestOffsetsResponse = namedtuple('LatestOffsetsResponse', ['partition', 'offse
 class FakeKafkaConsumer(FakeConsumer):
     def __init__(self, client, mock=None, group_id='default', fail_on_offset=None):
         self._client = client
+        self.__itermsgs = None
+        self.assignment = None
         self.config = {
             'group_id': group_id,
         }
         super(FakeKafkaConsumer, self).__init__(client, mock, fail_on_offset)
 
     def assign(self, topic_partitions):
+        self.assignment = list(topic_partitions)
+        self._offsets = {}
         if self.config['group_id'] is None:
             for p in topic_partitions:
-                self.offsets[p.partition] = self._client.latest_offsets[p.partition]
+                self._offsets[p.partition] = self._client.latest_offsets[p.partition]
 
     def position(self, topic_partition):
         return self.offsets[topic_partition.partition]
+
+    def topics(self):
+        return self._client.topics
+
+    def close(self):
+        pass
+
+    def seek(self, partition, offset):
+        self.offsets[partition.partition] = offset
+
+    def __iter__(self):
+        if self.__itermsgs is None:
+            def _itermsgs():
+                while True:
+                    result = self.get_records()
+                    if result:
+                        yield result[0]
+                    else:
+                        raise StopIteration
+
+            self.__itermsgs = _itermsgs()
+        return self
+
+    def next(self):
+        return next(self.__itermsgs)
+
+    @property
+    def offsets(self):
+        if self._offsets is None:
+            if self.mock is None:
+                self._offsets = self.client.offsets.copy()
+        return self._offsets
 
 
 class FakeClient(object):
@@ -160,7 +177,8 @@ class FakeClient(object):
         for partition, init_offset in offsets.items():
             for offset in range(init_offset, max(min(self.latest_offsets[partition],
                         init_offset + count + self.count_variations[partition]), 0)):
-                yield partition, OffsetAndMessage(offset, self.data[partition][offset])
+                msg = self.data[partition][offset]
+                yield ConsumerRecord(partition, offset, msg.key, msg.value)
 
     def send_offset_request(self, *args, **kwargs):
         result = []
