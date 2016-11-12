@@ -125,18 +125,20 @@ class FakeKafkaConsumer(FakeConsumer):
 
     def seek(self, partition, offset):
         self.offsets[partition.partition] = offset
+        self._init_iter()
+
+    def _init_iter(self):
+        def _itermsgs():
+            while True:
+                result = self.get_records()
+                if result:
+                    yield result[0]
+                else:
+                    raise StopIteration
+        self.__itermsgs = _itermsgs()
 
     def __iter__(self):
-        if self.__itermsgs is None:
-            def _itermsgs():
-                while True:
-                    result = self.get_records()
-                    if result:
-                        yield result[0]
-                    else:
-                        raise StopIteration
-
-            self.__itermsgs = _itermsgs()
+        self._init_iter()
         return self
 
     def next(self):
