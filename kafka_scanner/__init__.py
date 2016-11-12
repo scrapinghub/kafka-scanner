@@ -304,7 +304,7 @@ class KafkaScanner(object):
 
     def _get_position(self):
         offsets = {}
-        for partition in self.consumer.assignment:
+        for partition in self.consumer.assignment():
             offsets[partition.partition] = self.consumer.position(partition)
         return offsets
 

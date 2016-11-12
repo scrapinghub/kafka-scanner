@@ -99,20 +99,23 @@ class FakeKafkaConsumer(FakeConsumer):
     def __init__(self, client, mock=None, fail_on_offset=None):
         self._client = client
         self.__itermsgs = None
-        self.assignment = None
+        self._assignment = None
         super(FakeKafkaConsumer, self).__init__(client, mock, fail_on_offset)
         self.config = {
             'group_id': self._get_init_params('group_id'),
         }
 
     def assign(self, topic_partitions):
-        self.assignment = list(topic_partitions)
+        self._assignment = list(topic_partitions)
         self._offsets = {}
         if self.config['group_id'] is None:
             for p in topic_partitions:
                 self._offsets[p.partition] = self._client.latest_offsets[p.partition]
         else:
             self._offsets = {p.partition: self.client.offsets[p.partition] for p in topic_partitions}
+
+    def assignment(self):
+        return self._assignment
 
     def position(self, topic_partition):
         return self.offsets[topic_partition.partition]
