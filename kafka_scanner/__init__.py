@@ -19,13 +19,9 @@ from .msg_processor import MsgProcessor
 __version__ = '0.1.1'
 
 DEFAULT_BATCH_SIZE = 10000
-FETCH_BUFFER_SIZE_BYTES = 10 * 1024 * 1024
-FETCH_SIZE_BYTES = 10 ** 7
-MAX_FETCH_BUFFER_SIZE_BYTES = FETCH_BUFFER_SIZE_BYTES * 10
+MAX_FETCH_PARTITION_SIZE_BYTES = 100 * 1024 * 1024
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
-logging.getLogger("kafka.client").setLevel(logging.WARNING)
-logging.getLogger("kafka.conn").setLevel(logging.WARNING)
 
 
 log = logging.getLogger(__name__)
@@ -317,8 +313,10 @@ class KafkaScanner(object):
             bootstrap_servers=self._brokers,
             group_id=self._group,
             enable_auto_commit=False,
-            consumer_timeout_ms=100,
+            consumer_timeout_ms=1000,
+            auto_offset_reset='earliest',
             api_version=self._api_version,
+            max_partition_fetch_bytes = MAX_FETCH_PARTITION_SIZE_BYTES,
         )
         partitions = partitions or []
         partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]

@@ -10,19 +10,8 @@ from kafka.common import LeaderNotAvailableError
 
 log = logging.getLogger(__name__)
 
-# this exception is not correctly handled in kafka 0.9.5
-def retry_on_exception(exception):
-    print "Retried: {}".format(traceback.format_exc())
-    return isinstance(exception, LeaderNotAvailableError)
-
-@retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
-def _get_messages_from_consumer(consumer, max_next_messages):
-    count = 0
-    for m in consumer:
-        yield m
-        count += 1
-        if count == max_next_messages:
-            break
+class NoDataException(Exception):
+    pass
 
 class MsgProcessorHandlers(object):
     def __init__(self, encoding=None):
@@ -30,6 +19,7 @@ class MsgProcessorHandlers(object):
         self.consumer = None
         self.__next_messages = 0
         self.__encoding = encoding
+        self.__consecutive_no_data = 0
 
     def set_consumer(self, consumer):
         self.consumer = consumer
@@ -43,6 +33,22 @@ class MsgProcessorHandlers(object):
     def next_messages(self):
         return self.__next_messages
 
+    def _get_messages_from_consumer(self):
+        count = 0
+        for m in self.consumer:
+            yield m
+            count += 1
+            self.__consecutive_no_data = 0
+            if count == self.__next_messages:
+                break
+        if count == 0:
+            self.__consecutive_no_data += 1
+            if self.__consecutive_no_data == 3:
+                partition = list(self.consumer.assignment())[0]
+                raise NoDataException('Read operation didn\'t retrieve records at partition %d, position %d' %
+                        (partition.partition, self.consumer.position(partition))
+                )
+
     def consume_messages(self, max_next_messages):
         """ Get messages batch from Kafka (list at output) """
         # get messages list from kafka
@@ -50,7 +56,7 @@ class MsgProcessorHandlers(object):
             self.set_next_messages(min(1000, max_next_messages))
         self.set_next_messages(min(self.__next_messages, max_next_messages))
         mark = time.time()
-        for record in _get_messages_from_consumer(self.consumer, self.__next_messages):
+        for record in self._get_messages_from_consumer():
             yield record.partition, record.offset, record.key, record.value
         newmark = time.time()
         if newmark - mark > 30:
