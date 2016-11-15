@@ -657,7 +657,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
             api_version=self._api_version,
             **self._ssl_configs
         )
-        consumer.assign(partitions)
+        consumer.assign(self._partitions)
         offsets = {p.partition: consumer.committed(p) or 0 for p in self._partitions}
         consumer.close()
         return offsets
