@@ -143,7 +143,7 @@ class KafkaScanner(object):
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         start_offsets=None, min_lower_offsets=None,
-                        encoding='utf8', batch_autocommit=True, ssl_configs=None):
+                        encoding='utf8', batch_autocommit=True, api_version=(0,8,1), ssl_configs=None):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -165,9 +165,12 @@ class KafkaScanner(object):
         ssl_configs - A dict of ssl options to pass to kafka.KafkaConsumer. E.g:
                       ssl_configs={'ssl_cafile': '/path/to/ca', 'ssl_certfile': '/path/to/cert', ...}
                       See http://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html for details.
+
+        api_version - see kafka.consumer.group.KafkaConsumer docstring. Default here is (0,8,1) for
+                      compatibility with previous scanner (commited offsets saved on zookeeper server)
         """
         # for inverse scanning api version doesn't matter
-        self._api_version = None
+        self._api_version = api_version
 
         # _ssl_configs must be set before _check_topic_exists is called.
         self._ssl_configs = ssl_configs or {}
@@ -237,6 +240,7 @@ class KafkaScanner(object):
         consumer = kafka.KafkaConsumer(
             bootstrap_servers=self._brokers,
             group_id=None,
+            api_version=self._api_version,
             **self._ssl_configs)
         topics = consumer.topics()
         consumer.close()
@@ -536,7 +540,8 @@ class KafkaScanner(object):
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def latest_offsets(self):
         if not self._latest_offsets:
-            consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None, **self._ssl_configs)
+            consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers,
+                    group_id=None, api_version=self._api_version, **self._ssl_configs)
             partitions = [kafka.TopicPartition(self._topic, p.partition) for p in self._partitions]
             consumer.assign(partitions)
             self._latest_offsets = {p.partition: consumer.position(p) for p in partitions}
@@ -575,19 +580,17 @@ class KafkaScannerDirect(KafkaScannerSimple):
     with few extra feature support)
 
     start_offsets - allow to set start offsets dict.
-    api_version - see kafka.consumer.group.KafkaConsumer docstring. Default here is (0,8,1) for
-                  compatibility with previous scanner (commited offsets saved on zookeeper server)
 
     The rest of parameters has the same functionality as parent class
     """
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=False,
             partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
-            api_version=(0,8,1)):
+            api_version=(0,8,1), ssl_configs=None):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
                     count=0, batchcount=batchcount, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
-                    partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit)
+                    partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit,
+                    api_version=api_version, ssl_configs=ssl_configs)
         self._lower_offsets = start_offsets
-        self._api_version = api_version
         self._init_consumer = None
         self._client = _get_client(self._brokers)
 
