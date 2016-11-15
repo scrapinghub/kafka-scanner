@@ -24,3 +24,21 @@ Basic example
             do_my_thing(m)
 
 Check class docstring for more options.
+
+SSL example
+=============
+
+Set the ssl configs in a dict `ssl_configs` and pass it to the scanner constructor.
+
+.. code:: python
+
+    from kafka_scanner import KafkaScannerSimple
+    KAFKA_BROKERS = ['kafka1.example.com:9093', 'kafka2.example.com:9093', 'kafka3.example.com:9093']
+
+    ssl_configs = {
+        'ssl_cafile': '/path/to/ca.crt',
+        'ssl_certfile': '/path/to/client.crt',
+        'ssl_keyfile': '/path/to/client.key',
+    }
+    scanner = KafkaScannerSimple(KAFKA_BROKERS, <topic name>, partitions=[<num partition>], ssl_configs=ssl_configs)
+    ...

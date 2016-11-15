@@ -143,7 +143,7 @@ class KafkaScanner(object):
                         batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         start_offsets=None, min_lower_offsets=None,
-                        encoding='utf8', batch_autocommit=True):
+                        encoding='utf8', batch_autocommit=True, ssl_configs=None):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -162,9 +162,17 @@ class KafkaScanner(object):
         min_lower_offsets - Set limit lower offsets until which to scan.
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         batch_autocommit - If True, commit offsets each time a batch is finished
+        ssl_configs - A dict of ssl options to pass to kafka.KafkaConsumer. E.g:
+                      ssl_configs={'ssl_cafile': '/path/to/ca', 'ssl_certfile': '/path/to/cert', ...}
+                      See http://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html for details.
         """
         # for inverse scanning api version doesn't matter
         self._api_version = None
+
+        # _ssl_configs must be set before _check_topic_exists is called.
+        self._ssl_configs = ssl_configs or {}
+        if self._ssl_configs:
+            self._ssl_configs['security_protocol'] = 'SSL'
 
         self._brokers = brokers
         self._topic = topic
@@ -226,7 +234,10 @@ class KafkaScanner(object):
     @property
     #@retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
     def topics(self):
-        consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None)
+        consumer = kafka.KafkaConsumer(
+            bootstrap_servers=self._brokers,
+            group_id=None,
+            **self._ssl_configs)
         topics = consumer.topics()
         consumer.close()
         return topics
@@ -317,6 +328,7 @@ class KafkaScanner(object):
             auto_offset_reset='earliest',
             api_version=self._api_version,
             max_partition_fetch_bytes = MAX_FETCH_PARTITION_SIZE_BYTES,
+            **self._ssl_configs
         )
         partitions = partitions or []
         partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]
@@ -484,7 +496,7 @@ class KafkaScanner(object):
         record = omsg.setdefault('record', {})
         record['_key'] = omsg['_key']
         record = self.process_record(record)
-        return omsg 
+        return omsg
 
     def are_there_messages_to_process(self):
         if self._lower_offsets is None:
@@ -524,7 +536,7 @@ class KafkaScanner(object):
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def latest_offsets(self):
         if not self._latest_offsets:
-            consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None)
+            consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=None, **self._ssl_configs)
             partitions = [kafka.TopicPartition(self._topic, p.partition) for p in self._partitions]
             consumer.assign(partitions)
             self._latest_offsets = {p.partition: consumer.position(p) for p in partitions}
@@ -639,7 +651,12 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def get_committed_offsets(self):
-        consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers, group_id=self._group, api_version=self._api_version)
+        consumer = kafka.KafkaConsumer(
+            bootstrap_servers=self._brokers,
+            group_id=self._group,
+            api_version=self._api_version,
+            **self._ssl_configs
+        )
         consumer.assign(partitions)
         offsets = {p.partition: consumer.committed(p) or 0 for p in self._partitions}
         consumer.close()
