@@ -670,10 +670,13 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _commit_offsets(self, offsets):
-        log.info('Commiting offsets for group %s (topic %s): %s', self._group, self._topic, offsets)
-        self.init_consumer.offsets.update(offsets)
-        self.init_consumer.count_since_commit += 1
-        self.init_consumer.commit()
+        offsets_dict = {}
+        for p, o in offsets.items():
+            for pt in self._partitions:
+                if pt.partition == p:
+                    offsets_dict[pt] = kafka.structs.OffsetAndMetadata(o, None)
+        self.consumer.commit(offsets_dict)
+        log.info('Committed offsets for group %s (topic %s): %s', self._group, self._topic, offsets)
 
     def close(self):
         if not self.is_closed and self._init_consumer is not None:
