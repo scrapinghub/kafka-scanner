@@ -114,8 +114,7 @@ class StatsLogger(object):
 
 
 def retry_on_exception(exception):
-    # log.error("Retried: {}".format(traceback.format_exc()))
-    print traceback.format_exc()
+    log.error("Retried: {}".format(traceback.format_exc()))
     if not isinstance(exception, KeyboardInterrupt):
         return True
     return False
@@ -183,9 +182,9 @@ class KafkaScanner(object):
         self.processor = None
         self.processor_handlers = None
         self._min_lower_offsets = defaultdict(int, min_lower_offsets or {})
-        self._lower_offsets = None
+        self._lower_offsets = start_offsets
         self._upper_offsets = None
-        self._latest_offsets = start_offsets
+        self._latest_offsets = None
         self.__last_message = None
 
         self._dupestempdir = None
@@ -569,10 +568,9 @@ class KafkaScannerDirect(KafkaScannerSimple):
             partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
             api_version=(0,8,1), ssl_configs=None):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
-                    count=0, batchcount=batchcount, nodelete=True, nodedupe=True,
+                    count=0, batchcount=batchcount, nodelete=True, nodedupe=True, start_offsets=start_offsets,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit,
                     api_version=api_version, ssl_configs=ssl_configs)
-        self._lower_offsets = start_offsets
         self._keep_offsets = keep_offsets
         if isinstance(group, basestring):
             self._group = group
@@ -581,11 +579,14 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     def init_scanner(self):
         self._upper_offsets = self.latest_offsets
-        if not self._keep_offsets and not self._lower_offsets:
-            self._lower_offsets = {tp.partition: 0 for tp in self._partitions}
-            self._commit_offsets(self._lower_offsets)
+        if not self._lower_offsets:
+            if self._keep_offsets:
+                self._lower_offsets = self.get_committed_offsets()
+            else:
+                self._lower_offsets = {tp.partition: 0 for tp in self._partitions}
+                self._commit_offsets(self._lower_offsets)
         else:
-            self._lower_offsets = self.get_committed_offsets()
+            self._commit_offsets(self._lower_offsets)
         super(KafkaScannerDirect, self).init_scanner()
         log.info("Initial offsets for topic %s: %s", self._topic, repr(self._get_position()))
         log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
