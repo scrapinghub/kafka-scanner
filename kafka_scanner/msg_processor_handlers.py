@@ -6,9 +6,15 @@ import traceback
 import msgpack
 from retrying import retry
 
-from kafka.common import LeaderNotAvailableError
-
 log = logging.getLogger(__name__)
+
+
+def retry_on_exception(exception):
+    log.error("Retried: {}".format(traceback.format_exc()))
+    if not isinstance(exception, KeyboardInterrupt):
+        return True
+    return False
+
 
 class NoDataException(Exception):
     pass
@@ -33,6 +39,7 @@ class MsgProcessorHandlers(object):
     def next_messages(self):
         return self.__next_messages
 
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _get_messages_from_consumer(self):
         count = 0
         for m in self.consumer:
