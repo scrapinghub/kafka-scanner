@@ -123,14 +123,13 @@ def retry_on_exception(exception):
 class KafkaScanner(object):
 
     def __init__(self, brokers, topic, group=None, batchsize=DEFAULT_BATCH_SIZE, count=0,
-                        batchcount=0, keep_offsets=False, nodelete=False, nodedupe=False,
+                        batchcount=0, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         start_offsets=None, min_lower_offsets=None,
                         encoding='utf8', batch_autocommit=True, api_version=(0,8,1), ssl_configs=None):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
-        keep_offsets - don't reset partition read offsets. Instead use committed ones (enable for resuming jobs)
         nodedupe - If True, yield all records, regardless duplicated keys. Default is False (do dedupe)
         nodelete - If True, yield also deletion records. Default is False.
         count - number of records to yield
@@ -141,7 +140,7 @@ class KafkaScanner(object):
         logcount - scanned records period to print stats log line
         max_next_messages - max number of messages to retrieve in a single request from kafka server.
         start_offsets - Set starting upper offsets dict. If None, upper offsets will be set to latest offsets for each
-                        partition (except if keep_offsets is True)
+                        partition
         min_lower_offsets - Set limit lower offsets until which to scan.
         encoding - encoding to pass to msgpack.unpackb in order to return unicode strings
         batch_autocommit - If True, commit offsets each time a batch is finished
@@ -162,11 +161,10 @@ class KafkaScanner(object):
 
         self._brokers = brokers
         self._topic = topic
+        self._group = None
+
         self._check_topic_exists()
 
-        self._group = None
-        self._keep_offsets = False
-        self._set_consumer_group(group, keep_offsets)
         self._partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]
         self.enabled = False
         self.__real_scanned_count = 0
@@ -220,14 +218,18 @@ class KafkaScanner(object):
     @property
     #@retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
     def topics(self):
-        consumer = kafka.KafkaConsumer(
-            bootstrap_servers=self._brokers,
-            group_id=None,
-            api_version=self._api_version,
-            **self._ssl_configs)
+        consumer = self._create_util_consumer()
         topics = consumer.topics()
         consumer.close()
         return topics
+
+    def _create_util_consumer(self, group_none=False):
+        consumer = kafka.KafkaConsumer(
+            bootstrap_servers=self._brokers,
+            group_id=None if group_none else self._group,
+            api_version=self._api_version,
+            **self._ssl_configs)
+        return consumer
 
     def _check_topic_exists(self):
         if self.topic not in self.topics:
@@ -235,10 +237,6 @@ class KafkaScanner(object):
 
     def _make_dupe_dict(self, partition):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
-
-    def _set_consumer_group(self, group, keep_offsets):
-        if group is not None or keep_offsets:
-            log.warning("This class does not allow consumer group. Set consumer group to None and keep_offsets to False.")
 
     def init_scanner(self):
         handlers_list = ('consume_messages',)
@@ -523,8 +521,7 @@ class KafkaScanner(object):
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def latest_offsets(self):
         if not self._latest_offsets:
-            consumer = kafka.KafkaConsumer(bootstrap_servers=self._brokers,
-                    group_id=None, api_version=self._api_version, **self._ssl_configs)
+            consumer = self._create_util_consumer(group_none=True)
             partitions = [kafka.TopicPartition(self._topic, p.partition) for p in self._partitions]
             consumer.assign(partitions)
             self._latest_offsets = {p.partition: consumer.position(p) for p in partitions}
@@ -562,35 +559,35 @@ class KafkaScannerDirect(KafkaScannerSimple):
     This is essentially a wrapper around KafkaConsumer for supporting same api than other scanner,
     with few extra feature support)
 
-    start_offsets - allow to set start offsets dict.
+    keep_offsets - If True, use committed offsets as starting ones. Else start from earlies offsets.
+    start_offsets - allow to set start offsets dict (overrides keep_offsets=True)
 
     The rest of parameters has the same functionality as parent class
     """
-    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=False,
+    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=True,
             partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
             api_version=(0,8,1), ssl_configs=None):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
-                    count=0, batchcount=batchcount, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
+                    count=0, batchcount=batchcount, nodelete=True, nodedupe=True,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit,
                     api_version=api_version, ssl_configs=ssl_configs)
         self._lower_offsets = start_offsets
+        self._keep_offsets = keep_offsets
+        if isinstance(group, basestring):
+            self._group = group
+        if keep_offsets:
+            assert self._group, 'keep_offsets option needs a group name'
 
     def init_scanner(self):
         self._upper_offsets = self.latest_offsets
-        if not self._group or not self._keep_offsets:
+        if not self._keep_offsets and not self._lower_offsets:
             self._lower_offsets = {tp.partition: 0 for tp in self._partitions}
+            self._commit_offsets(self._lower_offsets)
         else:
             self._lower_offsets = self.get_committed_offsets()
         super(KafkaScannerDirect, self).init_scanner()
         log.info("Initial offsets for topic %s: %s", self._topic, repr(self._get_position()))
         log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
-
-    def _set_consumer_group(self, group, keep_offsets):
-        if isinstance(group, basestring):
-            self._group = group
-        if keep_offsets:
-            assert self._group, 'keep_offsets option needs a group name'
-        self._keep_offsets = keep_offsets
 
     def _init_offsets(self, batchsize):
         self._lower_offsets = self._get_position().copy()
@@ -622,12 +619,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def get_committed_offsets(self):
-        consumer = kafka.KafkaConsumer(
-            bootstrap_servers=self._brokers,
-            group_id=self._group,
-            api_version=self._api_version,
-            **self._ssl_configs
-        )
+        consumer = self._create_util_consumer()
         consumer.assign(self._partitions)
         offsets = {p.partition: consumer.committed(p) or 0 for p in self._partitions}
         consumer.close()
@@ -645,5 +637,8 @@ class KafkaScannerDirect(KafkaScannerSimple):
                 for pt in self._partitions:
                     if pt.partition == p:
                         offsets_dict[pt] = kafka.structs.OffsetAndMetadata(o, None)
-            self.consumer.commit(offsets_dict)
+            consumer = self.consumer or self._create_util_consumer()
+            consumer.commit(offsets_dict)
             log.info('Committed offsets for group %s (topic %s): %s', self._group, self._topic, offsets)
+            if self.consumer is None: # used util consumer
+                consumer.close()
