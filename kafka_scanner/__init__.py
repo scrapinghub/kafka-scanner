@@ -114,7 +114,8 @@ class StatsLogger(object):
 
 
 def retry_on_exception(exception):
-    log.error("Retried: {}".format(traceback.format_exc()))
+    # log.error("Retried: {}".format(traceback.format_exc()))
+    print traceback.format_exc()
     if not isinstance(exception, KeyboardInterrupt):
         return True
     return False

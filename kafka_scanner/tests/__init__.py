@@ -158,6 +158,9 @@ class FakeKafkaConsumer(FakeConsumer):
         offsets = {tp.partition: o.offset for tp, o in offsets.items()}
         self.client.offsets.update(offsets)
 
+    def committed(self, topicpartition):
+        return self.client.offsets[topicpartition.partition]
+
 
 class FakeClient(object):
     def __init__(self, data, num_partitions=1, max_partition_messages=None, count_variations=None):
