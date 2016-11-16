@@ -216,7 +216,7 @@ class KafkaScanner(object):
         self.__iter_batches = None
 
     @property
-    #@retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
+    @retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
     def topics(self):
         consumer = self._create_util_consumer()
         topics = consumer.topics()
