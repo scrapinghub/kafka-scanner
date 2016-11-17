@@ -171,7 +171,7 @@ class FakeClient(object):
     def close(self):
         pass
 
-def create_fake_kafka_consumer(client_mock, consumer_mock, fail_on_offset=None):
+def create_fake_kafka_consumer(client, consumer_mock, fail_on_offset=None):
     def _side_effect(*args, **kwargs):
-        return FakeKafkaConsumer(client_mock.return_value, consumer_mock, fail_on_offset)
+        return FakeKafkaConsumer(client, consumer_mock, fail_on_offset)
     return _side_effect
