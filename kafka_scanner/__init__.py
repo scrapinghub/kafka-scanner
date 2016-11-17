@@ -16,7 +16,7 @@ from sqlitedict import SqliteDict
 
 from .msg_processor import MsgProcessor
 
-__version__ = '0.2.1'
+__version__ = '0.2.3'
 
 DEFAULT_BATCH_SIZE = 10000
 MAX_FETCH_PARTITION_SIZE_BYTES = 100 * 1024 * 1024

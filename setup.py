@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name         = 'kafka_scanner',
-    version      = '0.2.1',
+    version      = '0.2.3',
     packages     = find_packages(),
     install_requires = [
         'kafka-python',
