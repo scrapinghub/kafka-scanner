@@ -15,7 +15,7 @@ class BaseScannerTest(unittest.TestCase):
                 fail_on_offset=None, count_variations=None, client=None, max_partition_messages=None, **scanner_kwargs):
         client = client or FakeClient(samples, num_partitions, max_partition_messages=max_partition_messages,
                             count_variations=count_variations)
-        kafka_consumer_mock.side_effect = create_fake_kafka_consumer(client, kafka_consumer_mock, None)
+        kafka_consumer_mock.side_effect = create_fake_kafka_consumer(client, kafka_consumer_mock, fail_on_offset)
         topic = 'test-topic'
         group = scanner_kwargs.pop('group', None)
         scanner = self.scannerclass(['kafka:9092'], topic, group,
