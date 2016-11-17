@@ -122,6 +122,8 @@ class FakeKafkaConsumer(object):
     def committed(self, topicpartition):
         return self._client.offsets[topicpartition.partition]
 
+    def partitions_for_topic(self, topic):
+        return self._client.topic_partitions[topic].keys()
 
 LatestOffsetsResponse = namedtuple('LatestOffsetsResponse', ['partition', 'offsets'])
 

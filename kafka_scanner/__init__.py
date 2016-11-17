@@ -165,6 +165,9 @@ class KafkaScanner(object):
 
         self._check_topic_exists()
 
+        if partitions is None:
+            partitions = list(self.partitions_for_topic(self._topic))
+
         self._partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]
         self.enabled = False
         self.__real_scanned_count = 0
@@ -214,6 +217,12 @@ class KafkaScanner(object):
         atexit.register(self.close)
 
         self.__iter_batches = None
+
+    def partitions_for_topic(self, topic):
+        consumer = self._create_util_consumer()
+        partitions = list(consumer.partitions_for_topic(topic))
+        consumer.close()
+        return partitions
 
     @property
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception, stop_max_attempt_number=60)
