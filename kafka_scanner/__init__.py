@@ -588,15 +588,17 @@ class KafkaScannerDirect(KafkaScannerSimple):
     with few extra feature support)
 
     start_offsets - allow to set start offsets dict.
+    stop_offsets - don't read beyond the given offsets.
 
     The rest of parameters has the same functionality as parent class
     """
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=False,
-            partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True):
+            partitions=None, start_offsets=None, stop_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
                     count=0, batchcount=batchcount, keep_offsets=keep_offsets, nodelete=True, nodedupe=True,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit)
         self._lower_offsets = start_offsets
+        self._latest_offsets = stop_offsets
 
     def init_scanner(self):
         super(KafkaScannerDirect, self).init_scanner()
