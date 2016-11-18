@@ -9,6 +9,8 @@ from kafka_scanner.tests import (
         FakeClient,
         create_fake_kafka_consumer)
 
+from kafka_scanner.exceptions import TestException
+
 class BaseScannerTest(unittest.TestCase):
     scannerclass = KafkaScanner
     def _get_scanner_messages(self, samples, num_partitions, kafka_consumer_mock,
@@ -29,7 +31,7 @@ class BaseScannerTest(unittest.TestCase):
                 number_of_batches += 1
                 for m in batch:
                     messages.append(m)
-        except AssertionError:
+        except TestException:
             pass
         return scanner, number_of_batches, messages
 
@@ -333,15 +335,26 @@ class KafkaScannerDirectResumeTest(BaseScannerTest):
         all_msgkeys = set()
         sum_msgkeys = 0
         client = FakeClient(self.samples, 1)
-        for batchcount, fail_on_offset in ((5, 450), (7, None)):
-            scanner, number_of_batches, messages = self._get_scanner_messages(None, None, kafka_consumer_mock,
-                        client=client, keep_offsets=True, batchsize=batchsize, batchcount=batchcount, max_next_messages=100, fail_on_offset=fail_on_offset,
-                        group='test_group')
-            msgkeys = set([m['_key'] for m in messages])
-            sum_msgkeys += len(msgkeys)
-            all_msgkeys.update(msgkeys)
+
+        # this run will fail on offset 0: 450
+        scanner, number_of_batches, messages = self._get_scanner_messages(None, None, kafka_consumer_mock,
+                    client=client, keep_offsets=True, batchsize=batchsize, batchcount=5, max_next_messages=100, fail_on_offset=450,
+                    group='test_group')
+        msgkeys = set([m['_key'] for m in messages])
+        sum_msgkeys += len(msgkeys)
+        all_msgkeys.update(msgkeys)
+
+        # check new run is started correctly, so no messages are lost
+        scanner, number_of_batches, messages = self._get_scanner_messages(None, None, kafka_consumer_mock,
+                    client=client, keep_offsets=True, batchsize=batchsize, batchcount=7, max_next_messages=100,
+                    group='test_group')
+        msgkeys = set([m['_key'] for m in messages])
+        sum_msgkeys += len(msgkeys)
+        all_msgkeys.update(msgkeys)
+
+        expected_keys = set(m[0] for m in self.msgs)
+        self.assertEqual(expected_keys.difference(all_msgkeys), set())
         self.assertEqual(len(all_msgkeys), sum_msgkeys)
-        self.assertEqual(sum_msgkeys, 1000)
 
 
 #     def test_kafka_scan_resume(self, kafka_consumer_mock, batchsize=100):

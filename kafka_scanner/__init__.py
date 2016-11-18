@@ -427,7 +427,6 @@ class KafkaScanner(object):
         while self.enabled:
             if self.are_there_messages_to_process():
                 for message in self.get_new_batch():
-                    self.__last_message[message['partition']] = message['offset']
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
                     if len(records) == self.__batchsize:
@@ -437,6 +436,7 @@ class KafkaScanner(object):
                         records = MessageCache(False)
                         self.__issued_batches += 1
                     records.append(message['record'])
+                    self.__last_message[message['partition']] = message['offset']
             else:
                 break
         if records:
