@@ -6,18 +6,18 @@ import traceback
 import msgpack
 from retrying import retry
 
+from .exceptions import TestException, NoDataException
+
 log = logging.getLogger(__name__)
 
 
 def retry_on_exception(exception):
-    log.error("Retried: {}".format(traceback.format_exc()))
-    if not isinstance(exception, KeyboardInterrupt):
-        return True
-    return False
+    log.error(traceback.format_exc())
+    for etype in (KeyboardInterrupt, TestException):
+        if isinstance(exception, etype):
+            return False
+    return True
 
-
-class NoDataException(Exception):
-    pass
 
 class MsgProcessorHandlers(object):
     def __init__(self, encoding=None):
@@ -25,7 +25,6 @@ class MsgProcessorHandlers(object):
         self.consumer = None
         self.__next_messages = 0
         self.__encoding = encoding
-        self.__consecutive_no_data = 0
 
     def set_consumer(self, consumer):
         self.consumer = consumer
@@ -40,21 +39,21 @@ class MsgProcessorHandlers(object):
         return self.__next_messages
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
+    def _get_message_from_consumer(self):
+        for m in self.consumer:
+            return m
+
     def _get_messages_from_consumer(self):
         count = 0
-        for m in self.consumer:
-            yield m
-            count += 1
-            self.__consecutive_no_data = 0
-            if count == self.__next_messages:
+        while True:
+            m = self._get_message_from_consumer()
+            if m:
+                yield m
+                count += 1
+                if count == self.__next_messages:
+                    break
+            else:
                 break
-        if count == 0:
-            self.__consecutive_no_data += 1
-            if self.__consecutive_no_data == 3:
-                partition = list(self.consumer.assignment())[0]
-                raise NoDataException('Read operation didn\'t retrieve records at partition %d, position %d' %
-                        (partition.partition, self.consumer.position(partition))
-                )
 
     def consume_messages(self, max_next_messages):
         """ Get messages batch from Kafka (list at output) """
