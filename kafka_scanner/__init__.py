@@ -188,7 +188,7 @@ class KafkaScanner(object):
         self._lower_offsets = start_offsets
         self._upper_offsets = None
         self._latest_offsets = None
-        self.__last_message = None
+        self.__last_message = {}
 
         self._dupestempdir = None
         self._dupes = None
@@ -427,7 +427,7 @@ class KafkaScanner(object):
         while self.enabled:
             if self.are_there_messages_to_process():
                 for message in self.get_new_batch():
-                    self.__last_message = message
+                    self.__last_message[message['partition']] = message['offset']
                     if self.__batchcount > 0 and self.__issued_batches == self.__batchcount - 1:
                         self.enabled = False
                     if len(records) == self.__batchsize:
@@ -443,7 +443,7 @@ class KafkaScanner(object):
             yield records.values()
             self.__issued_batches += 1
 
-        self.commit_final_offsets()
+        self.end_batch_commit()
 
         self.stats_logger.log_stats(totals=True)
 
@@ -610,14 +610,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
         return self._init_offsets(batchsize)
 
     def end_batch_commit(self):
-        if self.last_message:
-            commit_offsets = self._lower_offsets.copy()
-            commit_offsets[self.last_message['partition']] = self.last_message['offset']
+        commit_offsets = self._lower_offsets.copy()
+        for p, o in self.last_message.items():
+            commit_offsets[p] = o + 1
+        if self._lower_offsets != commit_offsets:
             self._commit_offsets(commit_offsets)
-
-    def commit_final_offsets(self):
-        commit_offsets = self._get_position()
-        self._commit_offsets(commit_offsets)
 
     def are_there_messages_to_process(self):
         for partition, offset in self._get_position().items():

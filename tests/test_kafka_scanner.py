@@ -292,9 +292,17 @@ class KafkaScannerDirectTest(BaseScannerTest):
         self.assertEqual(number_of_batches, 3)
 
     def test_kafka_stop_offsets(self, kafka_consumer_mock):
-        _, number_of_batches, messages = self._get_scanner_messages(self.samples, 3, kafka_consumer_mock,
+        client = FakeClient(self.samples, 3)
+
+        _, number_of_batches, messages = self._get_scanner_messages(None, None, kafka_consumer_mock, client=client,
                 count_variations={0: 2, 1: 3, 2: 2}, batchsize=200, stop_offsets={0: 150, 1: 150, 2: 200}, group='test_group')
         self.assertEqual(len(messages), 500)
+        self.assertEqual(number_of_batches, 3)
+
+        # ensure that next run resumes from previous stop offsets
+        _, number_of_batches, messages = self._get_scanner_messages(None, None, kafka_consumer_mock, client=client,
+                count_variations={0: 2, 1: 3, 2: 2}, batchsize=200, group='test_group')
+        self.assertEqual(len(messages), 600)
         self.assertEqual(number_of_batches, 3)
 
 
