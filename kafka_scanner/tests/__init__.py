@@ -9,6 +9,7 @@ from itertools import cycle
 
 import msgpack
 
+from kafka_scanner.exceptions import TestException
 
 Message = namedtuple("Message", ["key", "value"])
 ConsumerRecord = namedtuple("ConsumerRecord", ["partition", "offset", "key", "value"])
@@ -33,6 +34,7 @@ class FakeKafkaConsumer(object):
         self.record_queue = []
         self._offsets = None
         self.__itermsgs = None
+        self._init_iter()
         self._assignment = None
         self.config = {
             'group_id': self._get_init_params('group_id'),
@@ -58,7 +60,8 @@ class FakeKafkaConsumer(object):
                     self.record_queue.append(record)
             if self.record_queue:
                 record = self.record_queue.pop(0)
-                assert (self.fail_on_offset != record.offset), 'Failed on offset {}'.format(record.offset)
+                if self.fail_on_offset == record.offset:
+                    raise TestException('Failed on offset {}'.format(record.offset))
                 self.offsets[record.partition] = record.offset + 1
                 records.append(record)
                 count -= 1
@@ -102,7 +105,6 @@ class FakeKafkaConsumer(object):
         self.__itermsgs = _itermsgs()
 
     def __iter__(self):
-        self._init_iter()
         return self
 
     def next(self):
