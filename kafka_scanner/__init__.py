@@ -570,17 +570,19 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     keep_offsets - If True, use committed offsets as starting ones. Else start from earlies offsets.
     start_offsets - allow to set start offsets dict (overrides keep_offsets=True)
+    stop_offsets - A dict {partition: offset}. Don't read beyond the given offsets
 
     The rest of parameters has the same functionality as parent class
     """
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=True,
-            partitions=None, start_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
+            partitions=None, start_offsets=None, stop_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
             api_version=(0,8,1), ssl_configs=None):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
                     count=0, batchcount=batchcount, nodelete=True, nodedupe=True, start_offsets=start_offsets,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit,
                     api_version=api_version, ssl_configs=ssl_configs)
         self._keep_offsets = keep_offsets
+        self._latest_offsets = stop_offsets
         if isinstance(group, basestring):
             self._group = group
         if keep_offsets:
