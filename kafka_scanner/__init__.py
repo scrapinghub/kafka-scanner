@@ -319,6 +319,7 @@ class KafkaScanner(object):
             group_id=self._group,
             enable_auto_commit=False,
             consumer_timeout_ms=1000,
+            request_timeout_ms=120000,
             auto_offset_reset='earliest',
             api_version=self._api_version,
             max_partition_fetch_bytes = MAX_FETCH_PARTITION_SIZE_BYTES,
