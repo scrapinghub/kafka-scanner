@@ -609,7 +609,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     def end_batch_commit(self):
         commit_offsets = self._lower_offsets.copy()
-        for p, o in self.last_message.items():
+        for p, o in self.last_message.items() or self._upper_offsets.items():
             commit_offsets[p] = o + 1
         if self._lower_offsets != commit_offsets:
             self._commit_offsets(commit_offsets)
