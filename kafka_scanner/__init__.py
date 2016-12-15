@@ -472,9 +472,6 @@ class KafkaScanner(object):
     def is_closed(self):
         return self.__closed
 
-    def commit_final_offsets(self):
-        pass
-
     def run(self):
         """ Convenient method for iterating along topic. """
 
