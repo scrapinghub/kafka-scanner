@@ -19,7 +19,7 @@ from .msg_processor import MsgProcessor
 __version__ = '0.2.5'
 
 DEFAULT_BATCH_SIZE = 10000
-MAX_FETCH_PARTITION_SIZE_BYTES = 100 * 1024 * 1024
+MAX_FETCH_PARTITION_SIZE_BYTES = 10 * 1024 * 1024
 
 __all__ = ['KafkaScanner', 'KafkaScannerDirect', 'KafkaScannerSimple']
 
@@ -126,7 +126,8 @@ class KafkaScanner(object):
                         batchcount=0, nodelete=False, nodedupe=False,
                         partitions=None, max_next_messages=10000, logcount=10000,
                         start_offsets=None, min_lower_offsets=None,
-                        encoding='utf8', batch_autocommit=True, api_version=(0,8,1), ssl_configs=None):
+                        encoding='utf8', batch_autocommit=True, api_version=(0,8,1), ssl_configs=None,
+                        max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -150,10 +151,12 @@ class KafkaScanner(object):
 
         api_version - see kafka.consumer.group.KafkaConsumer docstring. Default here is (0,8,1) for
                       compatibility with previous scanner (commited offsets saved on zookeeper server)
+        max_partition_fetch_bytes - Same meaning as KafkaConsumer max_partition_fetch_bytes, Defaults to MAX_FETCH_PARTITION_SIZE_BYTES
         """
         # for inverse scanning api version doesn't matter
         self._api_version = api_version
 
+        self._max_partition_fetch_bytes = max_partition_fetch_bytes
         # _ssl_configs must be set before _check_topic_exists is called.
         self._ssl_configs = ssl_configs or {}
         if self._ssl_configs:
@@ -322,7 +325,7 @@ class KafkaScanner(object):
             request_timeout_ms=120000,
             auto_offset_reset='earliest',
             api_version=self._api_version,
-            max_partition_fetch_bytes = MAX_FETCH_PARTITION_SIZE_BYTES,
+            max_partition_fetch_bytes = self._max_partition_fetch_bytes,
             **self._ssl_configs
         )
         partitions = partitions or []
@@ -574,11 +577,11 @@ class KafkaScannerDirect(KafkaScannerSimple):
     """
     def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=True,
             partitions=None, start_offsets=None, stop_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
-            api_version=(0,8,1), ssl_configs=None):
+            api_version=(0,8,1), ssl_configs=None, max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
                     count=0, batchcount=batchcount, nodelete=True, nodedupe=True, start_offsets=start_offsets,
                     partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit,
-                    api_version=api_version, ssl_configs=ssl_configs)
+                    api_version=api_version, ssl_configs=ssl_configs, max_partition_fetch_bytes=max_partition_fetch_bytes)
         self._keep_offsets = keep_offsets
         self._latest_offsets = stop_offsets
         if isinstance(group, basestring):
