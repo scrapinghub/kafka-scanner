@@ -8,6 +8,7 @@ from collections import namedtuple
 from itertools import cycle
 
 import msgpack
+import six
 
 from kafka_scanner.exceptions import TestException
 
@@ -108,6 +109,9 @@ class FakeKafkaConsumer(object):
 
     def next(self):
         return next(self.__itermsgs)
+
+    if six.PY3:
+        __next__ = next
 
     @property
     def offsets(self):

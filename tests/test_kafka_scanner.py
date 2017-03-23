@@ -1,4 +1,8 @@
 # coding=utf-8
+from __future__ import division
+
+import six
+import os
 import unittest
 
 from mock import patch
@@ -42,7 +46,7 @@ class KafkaScannerTest(BaseScannerTest):
     msgs = [('AD%d' % i, 'body %d' % i) for i in range(7)]
     samples = get_kafka_msg_samples(msgs)
 
-    def test_kafka_scan(self, kafka_consumer_mock, num_partitions=1, expected_batches=1):
+    def _test_kafka_scan(self, kafka_consumer_mock, num_partitions=1, expected_batches=1):
         expected_messages = 7
         _, number_of_batches, messages = self._get_scanner_messages(self.samples, num_partitions, kafka_consumer_mock,
                 nodedupe=True)
@@ -51,10 +55,12 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(len(msgkeys), expected_messages)
         self.assertEqual(number_of_batches, expected_batches)
 
-    def test_kafka_scan_partitions(self, kafka_consumer_mock):
-        self.test_kafka_scan(num_partitions=3, expected_batches=1)
+    test_kafka_scan = _test_kafka_scan
 
-    def test_kafka_scan_count(self, kafka_consumer_mock, num_partitions=1, expected_batches=1):
+    def test_kafka_scan_partitions(self, kafka_consumer_mock):
+        self._test_kafka_scan(kafka_consumer_mock, num_partitions=3, expected_batches=1)
+
+    def _test_kafka_scan_count(self, kafka_consumer_mock, num_partitions=1, expected_batches=1):
         expected_messages = 2
         _, number_of_batches, messages = self._get_scanner_messages(self.samples, num_partitions, kafka_consumer_mock,
                 nodedupe=True, count=2)
@@ -63,10 +69,12 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(len(msgkeys), expected_messages)
         self.assertEqual(number_of_batches, expected_batches)
 
-    def test_kafka_scan_count_partitions(self, kafka_consumer_mock):
-        self.test_kafka_scan_count(num_partitions=3)
+    test_kafka_scan_count = _test_kafka_scan_count
 
-    def test_kafka_scan_batchsize(self, kafka_consumer_mock, num_partitions=1):
+    def test_kafka_scan_count_partitions(self, kafka_consumer_mock):
+        self._test_kafka_scan_count(kafka_consumer_mock, num_partitions=3)
+
+    def _test_kafka_scan_batchsize(self, kafka_consumer_mock, num_partitions=1):
         expected_messages = 7
         expected_batches = 4
         _, number_of_batches, messages = self._get_scanner_messages(self.samples, num_partitions, kafka_consumer_mock,
@@ -76,10 +84,12 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(len(msgkeys), expected_messages)
         self.assertEqual(number_of_batches, expected_batches)
 
-    def test_kafka_scan_batchsize_partitions(self, kafka_consumer_mock):
-        self.test_kafka_scan_batchsize(num_partitions=3)
+    test_kafka_scan_batchsize = _test_kafka_scan_batchsize
 
-    def test_kafka_scan_batchsize_count(self, kafka_consumer_mock, num_partitions=1):
+    def test_kafka_scan_batchsize_partitions(self, kafka_consumer_mock):
+        self._test_kafka_scan_batchsize(kafka_consumer_mock, num_partitions=3)
+
+    def _test_kafka_scan_batchsize_count(self, kafka_consumer_mock, num_partitions=1):
         expected_messages = 5
         expected_batches = 3
         _, number_of_batches, messages = self._get_scanner_messages(self.samples, num_partitions, kafka_consumer_mock,
@@ -89,33 +99,37 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(len(msgkeys), expected_messages)
         self.assertEqual(number_of_batches, expected_batches)
 
-    def test_kafka_scan_batchsize_count_partitions(self, kafka_consumer_mock):
-        self.test_kafka_scan_batchsize_count(num_partitions=3)
+    test_kafka_scan_batchsize_count = _test_kafka_scan_batchsize_count
 
-    def test_kafka_scan_batchcount(self, kafka_consumer_mock,
+    def test_kafka_scan_batchsize_count_partitions(self, kafka_consumer_mock):
+        self._test_kafka_scan_batchsize_count(kafka_consumer_mock, num_partitions=3)
+
+    def _test_kafka_scan_batchcount(self, kafka_consumer_mock,
                 batchsize=10000, batchcount=3, num_partitions=1, expected_messages=1000):
          msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)]
          samples = get_kafka_msg_samples(msgs)
          scanner, number_of_batches, messages = self._get_scanner_messages(samples, num_partitions, kafka_consumer_mock,
                 count_variations={0: 2, 1: 3, 2: 2}, batchsize=batchsize, batchcount=batchcount)
-         self.assertEqual(number_of_batches, min(batchcount, 1000 / batchsize or 1))
+         self.assertEqual(number_of_batches, min(batchcount, 1000 // batchsize or 1))
          msgkeys = [m['_key'] for m in messages]
          self.assertEqual(len(msgkeys), expected_messages)
          self.assertEqual(len(set(msgkeys)), expected_messages)
 
+    test_kafka_scan_batchcount = _test_kafka_scan_batchcount
+
     def test_kafka_scan_batchcount_batches(self, kafka_consumer_mock):
-        self.test_kafka_scan_batchcount(batchsize=200, expected_messages=600)
+        self._test_kafka_scan_batchcount(kafka_consumer_mock, batchsize=200, expected_messages=600)
 
     def test_kafka_scan_batchcount_one_batch(self, kafka_consumer_mock):
-        self.test_kafka_scan_batchcount(batchsize=200, batchcount=1, expected_messages=200)
+        self._test_kafka_scan_batchcount(kafka_consumer_mock, batchsize=200, batchcount=1, expected_messages=200)
 
     def test_kafka_scan_batchcount_partitions(self, kafka_consumer_mock):
-        self.test_kafka_scan_batchcount(num_partitions=3)
+        self._test_kafka_scan_batchcount(kafka_consumer_mock, num_partitions=3)
 
     def test_kafka_scan_batchcount_batches_partitions(self, kafka_consumer_mock):
-        self.test_kafka_scan_batchcount(batchsize=200, num_partitions=3, expected_messages=600)
+        self._test_kafka_scan_batchcount(kafka_consumer_mock, batchsize=200, num_partitions=3, expected_messages=600)
 
-    def test_kafka_scan_dedupe(self, kafka_consumer_mock, batchsize=10000):
+    def _test_kafka_scan_dedupe(self, kafka_consumer_mock, batchsize=10000):
         msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)] + \
                 [('AD%.3d' % i, 'body %dA' % i) for i in range(100, 200)]
         samples = get_kafka_msg_samples(msgs)
@@ -131,10 +145,12 @@ class KafkaScannerTest(BaseScannerTest):
         for i in range(100, 200):
             self.assertEqual(msgsdict['AD%.3d' %i], 'body %dA' % i)
 
-    def test_kafka_scan_dedupe_batches(self, kafka_consumer_mock):
-        self.test_kafka_scan_dedupe(batchsize=200)
+    test_kafka_scan_dedupe = _test_kafka_scan_dedupe
 
-    def test_kafka_scan_deleted(self, kafka_consumer_mock, batchsize=10000):
+    def test_kafka_scan_dedupe_batches(self, kafka_consumer_mock):
+        self._test_kafka_scan_dedupe(kafka_consumer_mock, batchsize=200)
+
+    def _test_kafka_scan_deleted(self, kafka_consumer_mock, batchsize=10000):
         msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)] + \
                 [('AD%.3d' % i, None) for i in range(100, 200)]
         samples = get_kafka_msg_samples(msgs)
@@ -150,10 +166,12 @@ class KafkaScannerTest(BaseScannerTest):
         for i in range(100, 200):
             self.assertTrue('AD%.3d' % i not in msgsdict)
 
-    def test_kafka_scan_deleted_batches(self, kafka_consumer_mock):
-        self.test_kafka_scan_deleted(batchsize=200)
+    test_kafka_scan_deleted = _test_kafka_scan_deleted
 
-    def test_kafka_scan_deleted_before(self, kafka_consumer_mock, batchsize=10000):
+    def test_kafka_scan_deleted_batches(self, kafka_consumer_mock):
+        self._test_kafka_scan_deleted(kafka_consumer_mock, batchsize=200)
+
+    def _test_kafka_scan_deleted_before(self, kafka_consumer_mock, batchsize=10000):
         msgs = [('AD%.3d' % i, None) for i in range(100, 200)] + \
                 [('AD%.3d' % i, 'body %d' % i) for i in range(1000)]
 
@@ -169,8 +187,10 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(scanner.dupes_count, 100)
         self.assertEqual(scanner.deleted_count, 0)
 
+    test_kafka_scan_deleted_before = _test_kafka_scan_deleted_before
+
     def test_kafka_scan_deleted_before_batches(self, kafka_consumer_mock):
-        self.test_kafka_scan_deleted_before(batchsize=200)
+        self._test_kafka_scan_deleted_before(kafka_consumer_mock, batchsize=200)
 
     def test_kafka_scan_nodelete(self, kafka_consumer_mock):
         msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)] + \
@@ -202,7 +222,7 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(scanner.scanned_count, 2000)
         self.assertEqual(scanner.dupes_count, 1000)
 
-    def test_kafka_scan_lower_offsets(self, kafka_consumer_mock, batchsize=10000):
+    def _test_kafka_scan_lower_offsets(self, kafka_consumer_mock, batchsize=10000):
         msgs = [('AD%.3d' % i, 'body %d' % i) for i in range(1000)] + \
                 [('AD%.3d' % i, None) for i in range(100, 200)]
         samples = get_kafka_msg_samples(msgs)
@@ -218,8 +238,10 @@ class KafkaScannerTest(BaseScannerTest):
         for i in range(100, 200):
             self.assertTrue('AD%.3d' % i not in msgsdict)
 
+    test_kafka_scan_lower_offsets = _test_kafka_scan_lower_offsets
+
     def test_kafka_scan_lower_offsets_batches(self, kafka_consumer_mock):
-        self.test_kafka_scan_lower_offsets(batchsize=200)
+        self._test_kafka_scan_lower_offsets(kafka_consumer_mock, batchsize=200)
 
     def test_encoding(self, kafka_consumer_mock):
         msgs = [('AD001', u'hol\xc3\xa1'.encode('latin1'))]
@@ -229,7 +251,7 @@ class KafkaScannerTest(BaseScannerTest):
         self.assertEqual(messages[0]['body'], u'hol\xc3\xa1')
 
     def test_wrong_encoding(self, kafka_consumer_mock):
-        msgs = [('AD001', '>\xc4\xee')]
+        msgs = [('AD001', six.b('>\xc4\xee'))]
         samples = get_kafka_msg_samples(msgs)
         _, _, messages = self._get_scanner_messages(samples, 1, kafka_consumer_mock)
         self.assertEqual(messages, [])

@@ -89,7 +89,7 @@ class MsgProcessorHandlers(object):
             if msg:
                 try:
                     record = msgpack.unpackb(msg, encoding=self.__encoding)
-                except Exception, e:
+                except Exception as e:
                     log.error("Error unpacking record at partition:offset {}:{} (key: {} : {})".format(partition, offset, key, repr(e)))
                     continue
                 else:

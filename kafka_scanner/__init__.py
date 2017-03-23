@@ -12,6 +12,7 @@ from collections import Iterable, defaultdict, OrderedDict, namedtuple
 
 from retrying import retry
 import kafka
+import six
 from sqlitedict import SqliteDict
 
 from .msg_processor import MsgProcessor
@@ -272,7 +273,7 @@ class KafkaScanner(object):
 
         # remove db dupes not used anymore
         if self._dupes:
-            for p in self._dupes.keys():
+            for p in list(six.iterkeys(self._dupes)):
                 if p not in self._upper_offsets:
                     db = self._dupes.pop(p)
                     db.close()
@@ -584,7 +585,7 @@ class KafkaScannerDirect(KafkaScannerSimple):
                     api_version=api_version, ssl_configs=ssl_configs, max_partition_fetch_bytes=max_partition_fetch_bytes)
         self._keep_offsets = keep_offsets
         self._latest_offsets = stop_offsets
-        if isinstance(group, basestring):
+        if isinstance(group, six.string_types):
             self._group = group
         if keep_offsets:
             assert self._group, 'keep_offsets option needs a group name'
