@@ -1,5 +1,4 @@
 language: python
-
 matrix:
   include:
     - python: 2.7
@@ -8,9 +7,16 @@ matrix:
       env: TOXENV=py35
     - python: 3.6
       env: TOXENV=py36
-
 install:
   - pip install -U tox
-
 script:
   - tox
+deploy:
+  provider: pypi
+  user: kalessin
+  password:
+    secure: XpVcWAZVnJPirVwjN74FioEAWhyf4+wns8NJjqO4QTQdgI6qk4rKBDGIKFFQI4WUfcbPEHtSxoUVfbFgpxsg4Fh5Y3C0LKIdteinlICTh9A+uYbdve+6ELpFvHVOdZrJj8t3IoQ7gf66j9Hfb0gJFSVwSMoyVFQ3nkfNxozFRNLG2wpGUCxLa+v5cQXAcJCT8Os/j+cI0rZGTrWYCUiYMVM5JdT1gZzx2q3yAqwFCg8ADNWKe3ZUIWsL+xNENaN8lq79v3Mh5fURc7r7AMJx+bXMM7gR/NYuybRR4GMMMTIJ4uZKqWAAoWj3H0dxWnvj/11ops6BPquslZAAxmtM/n0R4BVlFxYQE9Ggc1joCxwNPfJ8euEOHlib8PqUYDrSSQRvjKA+TzSEEFsIMalzTJAM3jsnyqkUrrYjT9eRjdlLS3im4UHlhBjkHWHmn1O8DscRkO2D5UMmqgUJ/A52Er+jNjBkHpNi8TYx2aWr0ZtVrR3I3hX5B13UzpafZsZePNOPtVGmPQMFju1IaeqsIteC7Tz80sHOqnDkySiMU4GavaHa70TBxvkUbyErO/6dlQ49m8pxpicABc3suVwMGHyByPYLfbBSwg+NA5RMmYxpSnaDUIzdvnRXVgWzqM7XtGX1qNCxje8jIHrpcfDuYIctGpDVQq3DorLnbEK9jok=
+  on:
+    tags: true
+    distributions: sdist bdist_wheel
+    repo: scrapinghub/kafka-scanner
