@@ -8,6 +8,16 @@ Features:
 * deduplication by key
 * provides fake kafka-python consumer/client for mocking when testing code that uses this library classes
 
+Two classes are provided:
+
+* `KafkaScanner` - reverse scan feature. Because the particular usage of the inverse logic, this class doesn't
+                   commit offsets (and so doesn't support consumer group). It always start from the latest offsets
+                   down to the lowest offsets.
+* `KafkaScannerDirect` - direct scan.
+
+Check classes docstrings for parameters and more information
+
+
 Basic example
 =============
 
@@ -22,7 +32,6 @@ Basic example
         for m in b:
             do_my_thing(m)
 
-Check class docstring for more options.
 
 SSL example
 =============
