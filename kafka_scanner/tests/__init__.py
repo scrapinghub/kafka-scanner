@@ -98,10 +98,9 @@ class FakeKafkaConsumer(object):
         def _itermsgs():
             while True:
                 result = self.get_records()
-                if result:
-                    yield result[0]
-                else:
-                    raise StopIteration
+                if not result:
+                    return
+                yield result[0]
         self.__itermsgs = _itermsgs()
 
     def __iter__(self):
