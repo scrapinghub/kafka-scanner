@@ -1,6 +1,10 @@
 High Level Kafka Scanner
 ========================
 
+Installation::
+
+  pip install kafka-scanner
+
 Features:
 
 * based on `kafka-python <https://github.com/mumrah/kafka-python/commits/v1.3.1>`_ library
