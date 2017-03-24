@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name         = 'kafka_scanner',
+    name         = 'kafka-scanner',
     version      = '0.3.1',
     description   = 'High Level Kafka Scanner, supporting inverse consuming and deduplication. Based on kafka-python library.',
     keywords = 'kafka',
