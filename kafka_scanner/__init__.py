@@ -246,7 +246,7 @@ class KafkaScanner(object):
 
     def _check_topic_exists(self):
         if self.topic not in self.topics:
-            raise ValueError("Topic not found: %s" % topic)
+            raise ValueError("Topic not found: %s" % self.topic)
 
     def _make_dupe_dict(self, partition):
         return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
