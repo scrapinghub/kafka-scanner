@@ -2,11 +2,9 @@
 
 from setuptools import setup, find_packages
 
-import kafka_scanner
-
 setup(
     name         = 'kafka-scanner',
-    version      = kafka_scanner.__version__,
+    version      = '0.3.2',
     description   = 'High Level Kafka Scanner, supporting inverse consuming and deduplication. Based on kafka-python library.',
     keywords = 'kafka',
     author = 'Scrapinghub',
