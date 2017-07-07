@@ -8,7 +8,7 @@ setup(
     description   = 'High Level Kafka Scanner, supporting inverse consuming and deduplication. Based on kafka-python library.',
     keywords = 'kafka',
     author = 'Scrapinghub',
-    author_email = 'info@scrapinghub',
+    author_email = 'info@scrapinghub.com',
     license = 'BSD',
     url = 'https://github.com/scrapinghub/kafka-scanner',
     classifiers = [
