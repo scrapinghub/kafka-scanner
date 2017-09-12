@@ -25,7 +25,7 @@ if sys.version_info < (2, 7, 4):
     socket.setdefaulttimeout(None)
 
 
-__version__ = '0.3.3'
+__version__ = '0.3.3.1'
 
 DEFAULT_BATCH_SIZE = 10000
 MAX_FETCH_PARTITION_SIZE_BYTES = 10 * 1024 * 1024
