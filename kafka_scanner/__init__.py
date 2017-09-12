@@ -244,11 +244,13 @@ class KafkaScanner(object):
         return topics
 
     def _create_util_consumer(self, group_none=False):
+        extra_consumer_kwargs = self._kafka_consumer_kwargs.copy()
+        extra_consumer_kwargs.update(self._ssl_configs)
         consumer = kafka.KafkaConsumer(
             bootstrap_servers=self._brokers,
             group_id=None if group_none else self._group,
             api_version=self._api_version,
-            **self._ssl_configs)
+            **extra_consumer_kwargs)
         return consumer
 
     def _check_topic_exists(self):
@@ -588,13 +590,14 @@ class KafkaScannerDirect(KafkaScannerSimple):
                  keep_offsets=True, partitions=None, start_offsets=None, stop_offsets=None,
                  max_next_messages=10000, logcount=10000, batch_autocommit=True,
                  api_version=(0, 8, 1), ssl_configs=None,
-                 max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES):
+                 max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES, **kafka_consumer_kwargs):
         super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize, count=0,
                                                  batchcount=batchcount, nodelete=True, nodedupe=True,
                                                  start_offsets=start_offsets, partitions=partitions,
                                                  max_next_messages=max_next_messages, logcount=logcount,
                                                  batch_autocommit=batch_autocommit, api_version=api_version,
-                                                 ssl_configs=ssl_configs, max_partition_fetch_bytes=max_partition_fetch_bytes)
+                                                 ssl_configs=ssl_configs, max_partition_fetch_bytes=max_partition_fetch_bytes,
+                                                 **kafka_consumer_kwargs)
         self._keep_offsets = keep_offsets
         self._latest_offsets = stop_offsets
         if isinstance(group, six.string_types):
