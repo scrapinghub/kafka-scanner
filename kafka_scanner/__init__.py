@@ -10,12 +10,20 @@ import traceback
 
 from collections import Iterable, defaultdict, OrderedDict, namedtuple
 
+import sys, socket
+
 from retrying import retry
 import kafka
 import six
 from sqlitedict import SqliteDict
 
 from .msg_processor import MsgProcessor
+
+
+if sys.version_info < (2, 7, 4):
+    # workaround for: http://bugs.python.org/issue6056
+    socket.setdefaulttimeout(None)
+
 
 __version__ = '0.3.2'
 
@@ -29,16 +37,10 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-import sys, socket
-if sys.version_info < (2, 7, 4):
-    # workaround for: http://bugs.python.org/issue6056
-    socket.setdefaulttimeout(None)
-
-
 class keydefaultdict(defaultdict):
     def __missing__(self, key):
         if self.default_factory is None:
-            raise KeyError( key )
+            raise KeyError(key)
         else:
             ret = self[key] = self.default_factory(key)
             return ret
@@ -115,7 +117,7 @@ class StatsLogger(object):
 
 
 def retry_on_exception(exception):
-    log.error("Retried: {}".format(traceback.format_exc()))
+    log.error("Retried: %s", traceback.format_exc())
     if not isinstance(exception, KeyboardInterrupt):
         return True
     return False
@@ -124,11 +126,12 @@ def retry_on_exception(exception):
 class KafkaScanner(object):
 
     def __init__(self, brokers, topic, group=None, batchsize=DEFAULT_BATCH_SIZE, count=0,
-                        batchcount=0, nodelete=False, nodedupe=False,
-                        partitions=None, max_next_messages=10000, logcount=10000,
-                        start_offsets=None, min_lower_offsets=None,
-                        encoding='utf8', batch_autocommit=True, api_version=(0,8,1), ssl_configs=None,
-                        max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES):
+                 batchcount=0, nodelete=False, nodedupe=False,
+                 partitions=None, max_next_messages=10000, logcount=10000,
+                 start_offsets=None, min_lower_offsets=None,
+                 encoding='utf8', batch_autocommit=True, api_version=(0, 8, 1), ssl_configs=None,
+                 max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES,
+                 **kafka_consumer_kwargs):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -208,12 +211,12 @@ class KafkaScanner(object):
 
         self.stats_logger = StatsLogger()
         for name, getter in (
-                ('Scanned', lambda : self.scanned_count),
-                ('Issued', lambda : self.issued_count),
-                ('Deleted', lambda : self.deleted_count)):
+                ('Scanned', lambda: self.scanned_count),
+                ('Issued', lambda: self.issued_count),
+                ('Deleted', lambda: self.deleted_count)):
             self.stats_logger.append_stat_var(name, getter)
         if not nodedupe:
-            self.stats_logger.append_stat_var('Dupes', lambda : self.dupes_count)
+            self.stats_logger.append_stat_var('Dupes', lambda: self.dupes_count)
 
         self.__max_next_messages = min(max_next_messages, self.__batchsize)
         # ensures cleaning of threads/db even after exceptions
@@ -221,6 +224,10 @@ class KafkaScanner(object):
         atexit.register(self.close)
 
         self.__iter_batches = None
+
+        self._kafka_consumer_kwargs = kafka_consumer_kwargs
+        self._kafka_consumer_kwargs.setdefault("request_timeout_ms", 120000)
+        self._kafka_consumer_kwargs.setdefault("retry_backoff_ms", 30000)
 
     def partitions_for_topic(self, topic):
         consumer = self._create_util_consumer()
@@ -249,7 +256,7 @@ class KafkaScanner(object):
             raise ValueError("Topic not found: %s" % self.topic)
 
     def _make_dupe_dict(self, partition):
-        return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit = True)
+        return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit=True)
 
     def init_scanner(self):
         handlers_list = ('consume_messages',)
@@ -318,16 +325,17 @@ class KafkaScanner(object):
 
     @retry(wait_fixed=60000, retry_on_exception=retry_on_exception)
     def _create_scan_consumer(self, partitions=None):
+        extra_consumer_kwargs = self._kafka_consumer_kwargs.copy()
+        extra_consumer_kwargs.update(self._ssl_configs)
         self.consumer = kafka.KafkaConsumer(
             bootstrap_servers=self._brokers,
             group_id=self._group,
             enable_auto_commit=False,
             consumer_timeout_ms=1000,
-            request_timeout_ms=120000,
             auto_offset_reset='earliest',
             api_version=self._api_version,
-            max_partition_fetch_bytes = self._max_partition_fetch_bytes,
-            **self._ssl_configs
+            max_partition_fetch_bytes=self._max_partition_fetch_bytes,
+            **extra_consumer_kwargs
         )
         partitions = partitions or []
         partitions = [kafka.TopicPartition(self._topic, p) for p in partitions]
@@ -453,11 +461,11 @@ class KafkaScanner(object):
         self.stats_logger.log_stats(totals=True)
 
         log.info("Total batches Issued: %d", self.__issued_batches)
-        scan_efficiency = 100.0 - ( 100.0 * (self.__real_scanned_count - \
+        scan_efficiency = 100.0 - (100.0 * (self.__real_scanned_count - \
                         self.scanned_count) / self.__real_scanned_count) \
                         if self.__real_scanned_count else 100.0
-        log.info("Real Scanned: {}".format(self.__real_scanned_count))
-        log.info("Scan efficiency: {:.2f}%".format(scan_efficiency))
+        log.info("Real Scanned: %d", self.__real_scanned_count)
+        log.info("Scan efficiency: %.2f", scan_efficiency)
 
         self.close()
 
@@ -576,13 +584,17 @@ class KafkaScannerDirect(KafkaScannerSimple):
 
     The rest of parameters has the same functionality as parent class
     """
-    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0, keep_offsets=True,
-            partitions=None, start_offsets=None, stop_offsets=None, max_next_messages=10000, logcount=10000, batch_autocommit=True,
-            api_version=(0,8,1), ssl_configs=None, max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES):
-        super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize,
-                    count=0, batchcount=batchcount, nodelete=True, nodedupe=True, start_offsets=start_offsets,
-                    partitions=partitions, max_next_messages=max_next_messages, logcount=logcount, batch_autocommit=batch_autocommit,
-                    api_version=api_version, ssl_configs=ssl_configs, max_partition_fetch_bytes=max_partition_fetch_bytes)
+    def __init__(self, brokers, topic, group, batchsize=DEFAULT_BATCH_SIZE, batchcount=0,
+                 keep_offsets=True, partitions=None, start_offsets=None, stop_offsets=None,
+                 max_next_messages=10000, logcount=10000, batch_autocommit=True,
+                 api_version=(0, 8, 1), ssl_configs=None,
+                 max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES):
+        super(KafkaScannerDirect, self).__init__(brokers, topic, group, batchsize=batchsize, count=0,
+                                                 batchcount=batchcount, nodelete=True, nodedupe=True,
+                                                 start_offsets=start_offsets, partitions=partitions,
+                                                 max_next_messages=max_next_messages, logcount=logcount,
+                                                 batch_autocommit=batch_autocommit, api_version=api_version,
+                                                 ssl_configs=ssl_configs, max_partition_fetch_bytes=max_partition_fetch_bytes)
         self._keep_offsets = keep_offsets
         self._latest_offsets = stop_offsets
         if isinstance(group, six.string_types):
