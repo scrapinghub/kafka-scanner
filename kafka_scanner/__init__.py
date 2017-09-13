@@ -168,7 +168,6 @@ class KafkaScanner(object):
 
         self._kafka_consumer_kwargs = kafka_consumer_kwargs
         self._kafka_consumer_kwargs.setdefault("request_timeout_ms", 120000)
-        self._kafka_consumer_kwargs.setdefault("retry_backoff_ms", 30000)
 
         self._brokers = brokers
         self._topic = topic
