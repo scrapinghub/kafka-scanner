@@ -244,13 +244,11 @@ class KafkaScanner(object):
         return topics
 
     def _create_util_consumer(self, group_none=False):
-        extra_consumer_kwargs = self._kafka_consumer_kwargs.copy()
-        extra_consumer_kwargs.update(self._ssl_configs)
         consumer = kafka.KafkaConsumer(
             bootstrap_servers=self._brokers,
             group_id=None if group_none else self._group,
             api_version=self._api_version,
-            **extra_consumer_kwargs)
+            **self._ssl_configs)
         return consumer
 
     def _check_topic_exists(self):
