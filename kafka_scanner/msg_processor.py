@@ -2,9 +2,9 @@ from .msg_processor_handlers import MsgProcessorHandlers
 
 class MsgProcessor(object):
 
-    def __init__(self, handlers_list, encoding=None):
+    def __init__(self, handlers_list, encoding=None, *args, **kwargs):
         self._handlers = []
-        self.processor_handlers = MsgProcessorHandlers(encoding=encoding)
+        self.processor_handlers = MsgProcessorHandlers(encoding=encoding, *args, **kwargs)
         for handler_name in handlers_list:
             self.add_handler(getattr(self.processor_handlers, handler_name))
 

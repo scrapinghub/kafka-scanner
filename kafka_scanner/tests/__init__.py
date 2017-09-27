@@ -3,6 +3,7 @@
 Tools for mocking kafka-python objects in order to allow to build tests
 """
 
+import json
 import zlib
 from collections import namedtuple
 from itertools import cycle
@@ -16,16 +17,25 @@ Message = namedtuple("Message", ["key", "value"])
 ConsumerRecord = namedtuple("ConsumerRecord", ["partition", "offset", "key", "value"])
 
 
-def get_kafka_msg_samples(msgs=None, fetch_count=0):
+def get_kafka_msg_samples(msgs=None, fetch_count=0, msgformat='msgpack', compress=True):
     if not msgs:
         msgs = [('AD12345', "my-body"),
                 ('AD34567', "second my-body"),
                 ('AD67890', 'third my-body')]
     fetch_count = fetch_count or len(msgs)
-    return [Message(key,
-         zlib.compress(msgpack.packb({'body': body})) if body else None)
-         for key, body in msgs[:fetch_count]]
-
+    kafka_samples = []
+    for key, body in msgs[:fetch_count]:
+        if not body:
+            processed_body = None
+        else:
+            if msgformat == 'msgpack':
+                processed_body = msgpack.packb({'body': body})
+            elif msgformat == 'json':
+                processed_body = json.dumps(body).encode()
+            if compress == True:
+                processed_body = zlib.compress(processed_body)
+        kafka_samples.append(Message(key, processed_body))
+    return kafka_samples
 
 class FakeKafkaConsumer(object):
     def __init__(self, client, mock=None, fail_on_offset=None):

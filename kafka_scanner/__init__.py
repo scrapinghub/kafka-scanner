@@ -1,14 +1,13 @@
 from __future__ import division
 
 import os
-import time
 import shutil
 import tempfile
 import atexit
 import logging
 import traceback
 
-from collections import Iterable, defaultdict, OrderedDict, namedtuple
+from collections import defaultdict, OrderedDict
 
 import sys, socket
 
@@ -130,8 +129,8 @@ class KafkaScanner(object):
                  partitions=None, max_next_messages=10000, logcount=10000,
                  start_offsets=None, min_lower_offsets=None,
                  encoding='utf8', batch_autocommit=True, api_version=(0, 8, 1), ssl_configs=None,
-                 max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES,
-                 **kafka_consumer_kwargs):
+                 max_partition_fetch_bytes=MAX_FETCH_PARTITION_SIZE_BYTES, decompress=True,
+                 msgformat='msgpack', **kafka_consumer_kwargs):
         """ Scanner class using Kafka as a source for the dumper
         supported kwargs:
 
@@ -156,6 +155,8 @@ class KafkaScanner(object):
         api_version - see kafka.consumer.group.KafkaConsumer docstring. Default here is (0,8,1) for
                       compatibility with previous scanner (commited offsets saved on zookeeper server)
         max_partition_fetch_bytes - Same meaning as KafkaConsumer max_partition_fetch_bytes, Defaults to MAX_FETCH_PARTITION_SIZE_BYTES
+        decompress - Extract messages using zlib
+        msgformat - Message serialization format. Supports `msgpack` or `json`
         """
         # for inverse scanning api version doesn't matter
         self._api_version = api_version
@@ -186,6 +187,8 @@ class KafkaScanner(object):
         self.__issued_count = 0
         self.__dupes_count = 0
         self.__encoding = encoding
+        self.__decompress = decompress
+        self.__msgformat = msgformat
         self.__batchcount = batchcount
         self.__issued_batches = 0
         self.__batch_autocommit = batch_autocommit
@@ -261,7 +264,8 @@ class KafkaScanner(object):
         handlers_list = ('consume_messages',)
         if not self.enabled:
             self.enabled = True
-            self.processor = MsgProcessor(handlers_list, encoding=self.__encoding)
+            self.processor = MsgProcessor(handlers_list, encoding=self.__encoding,
+                    decompress=self.__decompress, msgformat=self.__msgformat)
         self._create_scan_consumer()
 
     def _update_offsets(self, offsets):

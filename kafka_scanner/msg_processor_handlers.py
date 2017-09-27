@@ -1,12 +1,13 @@
-import zlib
-import time
+import json
 import logging
+import time
 import traceback
+import zlib
 
 import msgpack
 from retrying import retry
 
-from .exceptions import TestException, NoDataException
+from .exceptions import TestException
 
 log = logging.getLogger(__name__)
 
@@ -20,11 +21,22 @@ def retry_on_exception(exception):
 
 
 class MsgProcessorHandlers(object):
-    def __init__(self, encoding=None):
-        self.decompress_fun = zlib.decompress
+    def __init__(self, encoding=None, decompress=None, msgformat=None):
+        if decompress:
+            self.decompress_fun = zlib.decompress
+        else:
+            self.decompress_fun = self.dummy_decompress
         self.consumer = None
         self.__next_messages = 0
         self.__encoding = encoding
+        self.deserialize_fun = self.get_deserializer(msgformat)
+
+    def get_deserializer(self, msg_format):
+        msg_deserializers = {
+            'msgpack': self.deserialize_msgpack,
+            'json': self.deserialize_json
+            }
+        return msg_deserializers[msg_format]
 
     def set_consumer(self, consumer):
         self.consumer = consumer
@@ -88,7 +100,7 @@ class MsgProcessorHandlers(object):
             msg = pmsg.pop('message')
             if msg:
                 try:
-                    record = msgpack.unpackb(msg, encoding=self.__encoding)
+                    record = self.deserialize_fun(msg)
                 except Exception as e:
                     log.error("Error unpacking record at partition:offset {}:{} (key: {} : {})".format(partition, offset, key, repr(e)))
                     continue
@@ -100,3 +112,12 @@ class MsgProcessorHandlers(object):
                         log.info('Record {} has wrong type'.format(key))
             else:
                 yield pmsg
+
+    def deserialize_msgpack(self, msg):
+        return msgpack.unpackb(msg, encoding=self.__encoding)
+
+    def deserialize_json(self, msg):
+        return json.loads(msg.decode(encoding=self.__encoding))
+
+    def dummy_decompress(self, data):
+        return data
