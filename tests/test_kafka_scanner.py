@@ -2,7 +2,6 @@
 from __future__ import division
 
 import six
-import os
 import unittest
 
 from mock import patch
@@ -378,24 +377,46 @@ class KafkaScannerDirectResumeTest(BaseScannerTest):
         self.assertEqual(expected_keys.difference(all_msgkeys), set())
         self.assertEqual(len(all_msgkeys), sum_msgkeys)
 
+@patch('kafka.KafkaConsumer', autospec=True)
+class KafkaScannerDeserializationTest(BaseScannerTest):
+    class MyScanner(KafkaScanner):
+        test_count = 0
+        def process_record(self, record):
+            self.test_count += 1
+            return record
+    scannerclass = MyScanner
 
-#     def test_kafka_scan_resume(self, kafka_consumer_mock, batchsize=100):
-#
-#         client_mock.return_value = FakeClient(self.samples, 3, {0: 235, 1: 443, 2: 322}, {0: 2, 1: 2, 2: 2})
-#
-#         all_msgkeys = set()
-#         sum_msgkeys = 0
-#         for batchcount in (2, 2, 4, 2):
-#             _, number_of_batches, messages = self._get_scanner_messages(self.samples, 3, kafka_consumer_mock,
-#                         max_partition_messages={0: 235, 1: 443, 2: 322}, count_variations={0: 2, 1: 2, 2: 2}, keep_offsets=True, batchsize=batchsize, batchcount=batchcount)
-#             msgkeys = set([m['_key'] for m in messages])
-#             sum_msgkeys += len(msgkeys)
-#             all_msgkeys.update(msgkeys)
-#             self.assertEqual(number_of_batches, batchcount)
-#             self.assertTrue(batchsize * (batchcount - 1) <= len(msgkeys) <= batchsize * batchcount)
-#         self.assertEqual(len(all_msgkeys), sum_msgkeys)
-#         self.assertEqual(sum_msgkeys, 1000)
-#         # check we got all consecutive keys
-#         intkeys = set(int(k.replace('AD', '')) for k in all_msgkeys)
-#         self.assertEqual(intkeys, set(range(sum_msgkeys)))
-#
+    def test_process_record_json_compressed(self, kafka_consumer_mock):
+        msgs = [('AD{:d}'.format(i), {'body':' {:d}'.format(i)}) for i in range(1000)] + \
+                [('AD{:d}'.format(i), None) for i in range(100, 200)]
+
+        samples = get_kafka_msg_samples(msgs, msgformat='json', compress=True)
+
+        scanner, _, messages = self._get_scanner_messages(samples, 3, kafka_consumer_mock,
+                               count_variations={0: 2, 1: 3, 2: 2}, msgformat='json', decompress=True)
+        msgsdict = {m['_key']: m['body'] for m in messages}
+        self.assertEqual(len(set(msgsdict)), 900)
+        self.assertEqual(scanner.scanned_count, 1100)
+        self.assertEqual(scanner.issued_count, 900)
+        self.assertEqual(scanner.deleted_count, 100)
+        self.assertEqual(scanner.dupes_count, 100)
+        self.assertEqual(scanner.test_count, 900)
+        for i in range(100, 200):
+            self.assertTrue('AD%.3d' % i not in msgsdict)
+
+    def test_process_record_json_uncompressed(self, kafka_consumer_mock):
+        msgs = [('AD{:d}'.format(i), {'body':' {:d}'.format(i)}) for i in range(1000)] + \
+                [('AD{:d}'.format(i), None) for i in range(100, 200)]
+        samples = get_kafka_msg_samples(msgs, msgformat='json', compress=False)
+        scanner, _, messages = self._get_scanner_messages(samples, 3, kafka_consumer_mock,
+                               count_variations={0: 2, 1: 3, 2: 2}, msgformat='json', decompress=False)
+        msgsdict = {m['_key']: m['body'] for m in messages}
+        self.assertEqual(len(set(msgsdict)), 900)
+        self.assertEqual(scanner.scanned_count, 1100)
+        self.assertEqual(scanner.issued_count, 900)
+        self.assertEqual(scanner.deleted_count, 100)
+        self.assertEqual(scanner.dupes_count, 100)
+        self.assertEqual(scanner.test_count, 900)
+        for i in range(100, 200):
+            self.assertTrue('AD%.3d' % i not in msgsdict)
+
