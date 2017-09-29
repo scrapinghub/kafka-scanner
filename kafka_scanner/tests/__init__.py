@@ -13,14 +13,14 @@ import six
 
 from kafka_scanner.exceptions import TestException
 
-Message = namedtuple("Message", ["key", "value"])
-ConsumerRecord = namedtuple("ConsumerRecord", ["partition", "offset", "key", "value"])
+Message = namedtuple('Message', ['key', 'value'])
+ConsumerRecord = namedtuple('ConsumerRecord', ['partition', 'offset', 'key', 'value'])
 
 
 def get_kafka_msg_samples(msgs=None, fetch_count=0, msgformat='msgpack', compress=True):
     if not msgs:
-        msgs = [('AD12345', "my-body"),
-                ('AD34567', "second my-body"),
+        msgs = [('AD12345', 'my-body'),
+                ('AD34567', 'second my-body'),
                 ('AD67890', 'third my-body')]
     fetch_count = fetch_count or len(msgs)
     kafka_samples = []

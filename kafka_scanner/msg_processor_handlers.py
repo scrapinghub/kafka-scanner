@@ -102,7 +102,7 @@ class MsgProcessorHandlers(object):
                 try:
                     record = self.deserialize_fun(msg)
                 except Exception as e:
-                    log.error("Error unpacking record at partition:offset {}:{} (key: {} : {})".format(partition, offset, key, repr(e)))
+                    log.error('Error unpacking record at partition:offset {}:{} (key: {} : {})'.format(partition, offset, key, repr(e)))
                     continue
                 else:
                     if isinstance(record, dict):

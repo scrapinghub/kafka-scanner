@@ -116,7 +116,7 @@ class StatsLogger(object):
 
 
 def retry_on_exception(exception):
-    log.error("Retried: %s", traceback.format_exc())
+    log.error('Retried: %s', traceback.format_exc())
     if not isinstance(exception, KeyboardInterrupt):
         return True
     return False
@@ -168,7 +168,7 @@ class KafkaScanner(object):
             self._ssl_configs['security_protocol'] = 'SSL'
 
         self._kafka_consumer_kwargs = kafka_consumer_kwargs
-        self._kafka_consumer_kwargs.setdefault("request_timeout_ms", 120000)
+        self._kafka_consumer_kwargs.setdefault('request_timeout_ms', 120000)
 
         self._brokers = brokers
         self._topic = topic
@@ -255,10 +255,10 @@ class KafkaScanner(object):
 
     def _check_topic_exists(self):
         if self.topic not in self.topics:
-            raise ValueError("Topic not found: %s" % self.topic)
+            raise ValueError('Topic not found: %s' % self.topic)
 
     def _make_dupe_dict(self, partition):
-        return SqliteDict(os.path.join(self._dupestempdir, "%s.db" % partition), flag='n', autocommit=True)
+        return SqliteDict(os.path.join(self._dupestempdir, '%s.db' % partition), flag='n', autocommit=True)
 
     def init_scanner(self):
         handlers_list = ('consume_messages',)
@@ -305,15 +305,15 @@ class KafkaScanner(object):
                     partition_batchsize = partition_batchsize - offsets_run
                 else:
                     break
-            log.info("Offset run: %d", total_offsets_run)
+            log.info('Offset run: %d', total_offsets_run)
             # create new consumer if partition list changes
             if previous_lower_offsets is not None and set(previous_lower_offsets.keys()) != set(self._lower_offsets):
                 self._create_scan_consumer(self._lower_offsets.keys())
 
             # consumer must restart from newly computed lower offsets
             self._update_offsets(self._lower_offsets)
-        log.info("Initial offsets for topic %s: %s", self._topic, repr(self._lower_offsets))
-        log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
+        log.info('Initial offsets for topic %s: %s', self._topic, repr(self._lower_offsets))
+        log.info('Target offsets for topic %s: %s', self._topic, repr(self._upper_offsets))
 
         return batchsize
 
@@ -390,7 +390,7 @@ class KafkaScanner(object):
         if len(messages):
             yield messages.values()
         self.__scan_excess = partition_batchsize / read_batch_count if read_batch_count > 0 else self.__scan_excess * 2
-        log.info("Last offsets for topic %s: %s", self._topic, repr(self._get_position()))
+        log.info('Last offsets for topic %s: %s', self._topic, repr(self._get_position()))
 
     def _record_is_dupe(self, partition, key):
         if self._dupes is None:
@@ -463,12 +463,12 @@ class KafkaScanner(object):
 
         self.stats_logger.log_stats(totals=True)
 
-        log.info("Total batches Issued: %d", self.__issued_batches)
+        log.info('Total batches Issued: %d', self.__issued_batches)
         scan_efficiency = 100.0 - (100.0 * (self.__real_scanned_count - \
                         self.scanned_count) / self.__real_scanned_count) \
                         if self.__real_scanned_count else 100.0
-        log.info("Real Scanned: %d", self.__real_scanned_count)
-        log.info("Scan efficiency: %.2f", scan_efficiency)
+        log.info('Real Scanned: %d', self.__real_scanned_count)
+        log.info('Scan efficiency: %.2f', scan_efficiency)
 
         self.close()
 
@@ -617,8 +617,8 @@ class KafkaScannerDirect(KafkaScannerSimple):
         else:
             self._commit_offsets(self._lower_offsets)
         super(KafkaScannerDirect, self).init_scanner()
-        log.info("Initial offsets for topic %s: %s", self._topic, repr(self._get_position()))
-        log.info("Target offsets for topic %s: %s", self._topic, repr(self._upper_offsets))
+        log.info('Initial offsets for topic %s: %s', self._topic, repr(self._get_position()))
+        log.info('Target offsets for topic %s: %s', self._topic, repr(self._upper_offsets))
 
     def _init_offsets(self, batchsize):
         self._lower_offsets = self._get_position().copy()
